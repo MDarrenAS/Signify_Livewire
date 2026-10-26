@@ -9,6 +9,11 @@
 
 Signify adalah website yang dirancang untuk membantu pembelajaran Sistem Isyarat Bahasa Indonesia (SIBINDO). Repository ini dibangun di atas Laravel dan starter kit Livewire. Saat ini, aplikasi menyediakan fondasi autentikasi, dashboard, dan pengaturan akun; kamus isyarat, materi, kuis, serta pelacakan progres masih merupakan ruang lingkup produk yang direncanakan.
 
+## Dokumentasi proyek
+
+- [Panduan coding](docs/CODING_GUIDELINES.md) — konvensi dan pemeriksaan untuk kontribusi ke repository.
+- [Skema Supabase](docs/supabase_schema.sql) — skema PostgreSQL, relasi, dan kebijakan Row Level Security (RLS) untuk Supabase.
+
 ## Teknologi
 
 - PHP 8.3+ dan Laravel 13
@@ -41,7 +46,23 @@ composer dev
 
 Aplikasi menggunakan PostgreSQL melalui Supabase. Koneksi Laravel menggunakan driver `pgsql` dan dikonfigurasi melalui variabel environment, seperti `DB_CONNECTION` dan `DB_URL`. Jangan membagikan atau memasukkan file `.env` maupun kredensial Supabase ke commit.
 
-File `.env.example` menyediakan konfigurasi SQLite untuk penggunaan lokal tanpa kredensial database, dan pengujian juga diarahkan ke SQLite melalui `phpunit.xml`. Sebelum menjalankan `composer setup`, pastikan koneksi database yang aktif menunjuk ke database pengembangan yang benar. Perintah tersebut menjalankan migrasi pada database aktif.
+File `.env.example` menyediakan konfigurasi SQLite untuk penggunaan lokal tanpa kredensial database, dan pengujian juga diarahkan ke SQLite melalui `phpunit.xml`. Migration Laravel menjadi sumber skema untuk autentikasi Fortify, termasuk tabel `users`, passkeys, two-factor authentication, role, dan status aktif. `docs/supabase_schema.sql` hanya membuat tabel fitur tambahan dan policy Data API; jalankan migration Laravel terlebih dahulu pada database Supabase sebelum menjalankan SQL tersebut.
+
+> **Database Supabase yang sudah memakai skema lama:** jangan jalankan ulang `docs/supabase_schema.sql` versi baru atau `composer setup` pada database itu. Skema lama membuat `public.users` dengan UUID dan foreign key ke `auth.users`, yang tidak cocok dengan migration Fortify. Buat backup dan siapkan migrasi data terencana sebelum menghubungkan deployment ke database tersebut.
+
+## Deployment ke Vercel
+
+Konfigurasi saat ini menggunakan [`vercel-php@0.9.0`](https://github.com/vercel-community/php), runtime PHP komunitas untuk Vercel (PHP 8.5), bukan runtime PHP resmi Vercel. Vercel mendukung runtime kustom, tetapi deployment Laravel ini tetap perlu diverifikasi pada project Vercel sebenarnya. `vercel.json` mengatur build aset, fungsi PHP, routing, region, serta direktori sementara yang diperlukan Laravel. Region `bom1` harus disesuaikan bila region database Supabase berada di lokasi lain; tempatkan fungsi sedekat mungkin dengan database.
+
+Atur secret di **Vercel Project Settings → Environment Variables**, bukan di repository:
+
+- `APP_KEY`: application key Laravel yang stabil untuk semua deployment environment terkait.
+- `APP_URL`: URL HTTPS deployment.
+- `DB_URL`: connection string [**Transaction pooler**](https://supabase.com/docs/guides/database/connecting-to-postgres) dari tombol **Connect** di Supabase. Gunakan host, username, dan password persis seperti yang diberikan Supabase; mode ini umumnya menggunakan port `6543`. Encode karakter khusus pada password sesuai format URL.
+
+`DB_CONNECTION=pgsql`, `DB_SSLMODE=require`, `APP_ENV=production`, dan `APP_DEBUG=false` sudah menjadi konfigurasi deployment. Filesystem Vercel hanya dapat ditulis sementara di `/tmp`; file hasil upload harus menggunakan storage persisten eksternal. Session cookie, cache array, dan queue sync yang dikonfigurasi saat ini juga tidak menyediakan state persisten atau worker antrean.
+
+**Jangan jalankan `composer setup` di production:** perintah itu menjalankan migrasi pada database aktif. Jalankan migration Laravel dan SQL fitur Supabase sebagai langkah deployment terpisah, bukan dari request web. Autentikasi aplikasi menggunakan Laravel/Fortify, bukan Supabase Auth; karena itu, policy Data API tidak memberi identitas Fortify kepada Postgres. Koneksi database Laravel harus tetap server-side, dan setiap aksi yang mengakses data milik pengguna harus diotorisasi di Laravel.
 
 ## Pemeriksaan kode
 
