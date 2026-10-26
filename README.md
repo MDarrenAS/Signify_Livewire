@@ -16,7 +16,6 @@ Signify adalah website yang dirancang untuk membantu pembelajaran Sistem Isyarat
 - Blade, Tailwind CSS 4, dan JavaScript
 - Vite Plus untuk pengembangan dan bundling aset frontend
 - PostgreSQL melalui Supabase sebagai database aplikasi
-- SQLite untuk konfigurasi fallback Laravel dan pengujian
 
 ## Anggota tim
 
