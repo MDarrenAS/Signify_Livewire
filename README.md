@@ -50,7 +50,7 @@ File `.env.example` menyediakan konfigurasi SQLite untuk penggunaan lokal tanpa 
 
 ## Deployment ke Vercel
 
-Konfigurasi saat ini menggunakan [`vercel-php@0.9.0`](https://github.com/vercel-community/php), runtime PHP komunitas untuk Vercel (PHP 8.5), bukan runtime PHP resmi Vercel. Vercel mendukung runtime kustom, tetapi deployment Laravel ini tetap perlu diverifikasi pada project Vercel sebenarnya. `vercel.json` memasang dependency Composer sebelum membangun aset Vite karena stylesheet Flux berasal dari `vendor/`; kemudian mengatur fungsi PHP, routing, region, serta direktori sementara yang diperlukan Laravel. Region `bom1` harus disesuaikan bila region database Supabase berada di lokasi lain; tempatkan fungsi sedekat mungkin dengan database.
+Konfigurasi saat ini menggunakan [`vercel-php@0.9.0`](https://github.com/vercel-community/php), runtime PHP komunitas untuk Vercel (PHP 8.5), bukan runtime PHP resmi Vercel. Vercel mendukung runtime kustom, tetapi deployment Laravel ini tetap perlu diverifikasi pada project Vercel sebenarnya. `vercel.json` menggunakan aset Vite yang sudah di-commit di `public/build`, karena Composer tidak tersedia pada perintah build global Vercel sedangkan stylesheet Flux berasal dari `vendor/`. Jika aset frontend berubah, jalankan `npm run build` secara lokal dan commit hasil `public/build` bersama perubahannya. Runtime PHP menangani dependency Composer untuk fungsi Laravel. Konfigurasi tersebut juga mengatur routing, region, serta direktori sementara yang diperlukan Laravel. Region `bom1` harus disesuaikan bila region database Supabase berada di lokasi lain; tempatkan fungsi sedekat mungkin dengan database.
 
 Atur secret di **Vercel Project Settings → Environment Variables**, bukan di repository:
 
