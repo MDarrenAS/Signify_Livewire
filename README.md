@@ -48,8 +48,6 @@ Aplikasi menggunakan PostgreSQL melalui Supabase. Koneksi Laravel menggunakan dr
 
 File `.env.example` menyediakan konfigurasi SQLite untuk penggunaan lokal tanpa kredensial database, dan pengujian juga diarahkan ke SQLite melalui `phpunit.xml`. Migration Laravel menjadi sumber skema untuk autentikasi Fortify, termasuk tabel `users`, passkeys, two-factor authentication, role, dan status aktif. `docs/supabase_schema.sql` hanya membuat tabel fitur tambahan dan policy Data API; jalankan migration Laravel terlebih dahulu pada database Supabase sebelum menjalankan SQL tersebut.
 
-> **Database Supabase yang sudah memakai skema lama:** jangan jalankan ulang `docs/supabase_schema.sql` versi baru atau `composer setup` pada database itu. Skema lama membuat `public.users` dengan UUID dan foreign key ke `auth.users`, yang tidak cocok dengan migration Fortify. Buat backup dan siapkan migrasi data terencana sebelum menghubungkan deployment ke database tersebut.
-
 ## Deployment ke Vercel
 
 Konfigurasi saat ini menggunakan [`vercel-php@0.9.0`](https://github.com/vercel-community/php), runtime PHP komunitas untuk Vercel (PHP 8.5), bukan runtime PHP resmi Vercel. Vercel mendukung runtime kustom, tetapi deployment Laravel ini tetap perlu diverifikasi pada project Vercel sebenarnya. `vercel.json` mengatur build aset, fungsi PHP, routing, region, serta direktori sementara yang diperlukan Laravel. Region `bom1` harus disesuaikan bila region database Supabase berada di lokasi lain; tempatkan fungsi sedekat mungkin dengan database.
