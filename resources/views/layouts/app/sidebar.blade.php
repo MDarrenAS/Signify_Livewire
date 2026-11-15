@@ -225,16 +225,16 @@
                     Dashboard
                 </a>
 
-            <a href="{{ route('modul') }}">
+            <a href="{{ route('modul.index') }}" wire:navigate>
                 Modul Belajar
             </a>
 
-                <a href="#latihan-kuis">
+                <a href="{{ route('latihan.index') }}" wire:navigate>
                     <span class="sidebar-icon">✎</span>
                     Latihan dan Kuis
                 </a>
 
-                <a href="#kamus-bisindo">
+                <a href="{{ route('kamus.index') }}" wire:navigate>
                     <span class="sidebar-icon">☷</span>
                     Kamus BISINDO
                 </a>
