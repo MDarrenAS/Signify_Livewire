@@ -1,59 +1,190 @@
-<x-layouts::auth :title="__('Log in')">
-    <div class="flex flex-col gap-6">
-        <x-auth-header :title="__('Log in to your account')" :description="__('Enter your email and password below to log in')" />
+<x-layouts::auth :title="'Masuk'">
+    <div class="login-container">
+        <h1 class="login-title">Masuk</h1>
 
-        <!-- Session Status -->
         <x-auth-session-status class="text-center" :status="session('status')" />
 
-        <x-passkey-verify />
-
-        <form method="POST" action="{{ route('login.store') }}" class="flex flex-col gap-6">
+        <form method="POST" action="{{ route('login.store') }}" class="login-form">
             @csrf
 
-            <!-- Email Address -->
-            <flux:input
-                name="email"
-                :label="__('Email address')"
-                :value="old('email')"
-                type="email"
-                required
-                autofocus
-                autocomplete="email"
-                placeholder="email@example.com"
-            />
+            <div class="login-input-group">
+                <input
+                    type="email"
+                    name="email"
+                    value="{{ old('email') }}"
+                    placeholder="Email atau Username"
+                    required
+                    autofocus
+                    autocomplete="email"
+                >
+                @error('email')
+                    <span class="login-error">{{ $message }}</span>
+                @enderror
+            </div>
 
-            <!-- Password -->
-            <div class="relative">
-                <flux:input
-                    name="password"
-                    :label="__('Password')"
+            <div class="login-input-group">
+                <input
                     type="password"
+                    name="password"
+                    placeholder="Kata Sandi"
                     required
                     autocomplete="current-password"
-                    :placeholder="__('Password')"
-                    viewable
-                />
+                >
+                @error('password')
+                    <span class="login-error">{{ $message }}</span>
+                @enderror
+            </div>
 
+            <div class="login-forgot">
                 @if (Route::has('password.request'))
-                    <flux:link class="absolute top-0 text-sm end-0" :href="route('password.request')" wire:navigate>
-                        {{ __('Forgot your password?') }}
-                    </flux:link>
+                    <a href="{{ route('password.request') }}" wire:navigate>
+                        Lupa kata sandi?
+                    </a>
                 @endif
             </div>
 
-            <!-- Remember Me -->
-            <flux:checkbox name="remember" :label="__('Remember me')" :checked="old('remember')" />
+            <button type="submit" class="login-button">
+                Masuk
+            </button>
 
-            <div class="flex items-center justify-end">
-                <flux:button variant="primary" type="submit" class="w-full" data-test="login-button">
-                    {{ __('Log in') }}
-                </flux:button>
+            <div class="login-register-text">
+                Belum Punya Akun?
             </div>
-        </form>
 
-        <div class="space-x-1 text-sm text-center rtl:space-x-reverse text-zinc-600 dark:text-zinc-400">
-            <span>{{ __('Don\'t have an account?') }}</span>
-            <flux:link :href="route('register')" wire:navigate>{{ __('Sign up') }}</flux:link>
-        </div>
+            <a href="{{ route('register') }}" wire:navigate class="login-register-button">
+                Daftar
+            </a>
+        </form>
     </div>
+
+    <style>
+        .login-container {
+            width: 100%;
+            max-width: 650px;
+            margin: 0 auto;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        .login-title {
+            text-align: center;
+            font-size: 48px;
+            font-weight: 600;
+            line-height: 1.2;
+            color: #000;
+            margin: 0 0 105px;
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .login-input-group {
+            margin-bottom: 26px;
+        }
+
+        .login-input-group input {
+            box-sizing: border-box;
+            width: 100%;
+            height: 68px;
+            padding: 16px 20px;
+            background: #F3F3F3;
+            border: 1px solid #ADADAD;
+            border-radius: 20px;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 20px;
+            color: #333;
+            outline: none;
+        }
+
+        .login-input-group input::placeholder {
+            color: #828282;
+            opacity: 1;
+        }
+
+        .login-input-group input:focus {
+            border-color: #F9B92F;
+        }
+
+        .login-error {
+            display: block;
+            margin: 6px 0 0 10px;
+            color: #dc2626;
+            font-size: 13px;
+        }
+
+        .login-forgot {
+            margin: 2px 0 38px 20px;
+        }
+
+        .login-forgot a {
+            color: #E0A72A;
+            font-size: 20px;
+            text-decoration: none;
+        }
+
+        .login-button {
+            width: 100%;
+            height: 82px;
+            background: #F9B92F;
+            border: none;
+            border-radius: 20px;
+            box-shadow: 0 6px 4px rgba(0, 0, 0, 0.25);
+            color: #FFFCEF;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 32px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .login-register-text {
+            margin: 48px 0 28px 20px;
+            color: #828282;
+            font-size: 20px;
+        }
+
+        .login-register-button {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 85px;
+            box-sizing: border-box;
+            background: #FAFAFA;
+            border: 1px solid #ADADAD;
+            border-radius: 20px;
+            box-shadow: 0 6px 4px rgba(0, 0, 0, 0.25);
+            color: #F9B92F;
+            font-size: 36px;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        @media (max-width: 700px) {
+            .login-title {
+                font-size: 38px;
+                margin-bottom: 75px;
+            }
+
+            .login-input-group input {
+                font-size: 16px;
+            }
+
+            .login-forgot a,
+            .login-register-text {
+                font-size: 16px;
+            }
+
+            .login-button {
+                height: 68px;
+                font-size: 26px;
+            }
+
+            .login-register-button {
+                height: 70px;
+                font-size: 28px;
+            }
+        }
+    </style>
 </x-layouts::auth>
