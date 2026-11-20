@@ -1,129 +1,188 @@
 @props(['modul'])
 
 @php
-    $status = $modul['status'] ?? 'not_started'; // completed | in_progress | not_started | locked
-    $progress = min(100, max(0, (int) ($modul['progress'] ?? 0)));
-    $completedParts = (int) ($modul['completed_parts'] ?? 0);
-    $totalParts = max(1, (int) ($modul['total_parts'] ?? 1));
-    $modulUrl = Route::has('modul.show')
-        ? route('modul.show', $modul['slug'] ?? '')
-        : '#';
+    $rawParts   = $modul['parts'] ?? [];
+    $totalParts = count($rawParts) ?: max(1, (int) ($modul['total_parts'] ?? 1));
+
+    $completedParts = count($rawParts) > 0
+        ? collect($rawParts)->where('status', 'completed')->count()
+        : (int) ($modul['completed_parts'] ?? 0);
+
+    $progress = count($rawParts) > 0
+        ? (int) round(($completedParts / $totalParts) * 100)
+        : min(100, max(0, (int) ($modul['progress'] ?? 0)));
+
+    $hasCurrentPart = collect($rawParts)->contains(fn ($p) => ($p['status'] ?? '') === 'current');
+
+    $status = match (true) {
+        ($modul['status'] ?? null) === 'locked'           => 'locked',
+        count($rawParts) > 0 && $completedParts >= $totalParts => 'completed',
+        count($rawParts) > 0 && ($completedParts > 0 || $hasCurrentPart) => 'in_progress',
+        default                                           => $modul['status'] ?? 'not_started',
+    };
+
+    $defaultOpen = (bool) ($modul['is_expanded'] ?? ($status === 'in_progress'));
+
+    // Tandai bagian aktif pertama secara otomatis jika belum ditentukan eksplisit
+    $assignedCurrent = false;
+    $activePartSlug  = null;
+
+    $parts = collect($rawParts)->map(function ($part) use ($status, $hasCurrentPart, &$assignedCurrent, &$activePartSlug) {
+        $partStatus = $part['status'] ?? 'not_started';
+
+        if ($status === 'completed') {
+            $partStatus = 'completed';
+        } elseif ($status === 'in_progress' && ! $hasCurrentPart && ! $assignedCurrent && $partStatus === 'not_started') {
+            $partStatus = 'current';
+            $assignedCurrent = true;
+        }
+
+        if ($partStatus === 'current' && $activePartSlug === null) {
+            $activePartSlug = $part['slug'] ?? null;
+        }
+
+        $part['resolved_status'] = $partStatus;
+        return $part;
+    })->all();
+
+    $modulUrl    = Route::has('modul.show') ? route('modul.show', $modul['slug'] ?? '') : '#';
+    $continueUrl = ($status === 'in_progress' && $activePartSlug && Route::has('modul.part'))
+        ? route('modul.part', ['modul' => $modul['slug'] ?? '', 'part' => $activePartSlug])
+        : $modulUrl;
 
     $cardClasses = match ($status) {
-        'in_progress' => 'bg-[#FFF8E6] border-2 border-b-4 border-[#F9B92F]',
+        'in_progress' => 'bg-[#FFF8E6] hover:bg-[#FFF2CC] border-2 border-[#F9B92F] hover:border-[#D99B06] border-b-4 border-b-[#C98A06] hover:-translate-y-1 hover:shadow-[0_10px_24px_rgba(249,185,47,0.24)]',
         'locked'      => 'bg-[#EFEFEF]/75 border-2 border-[#D4D4D8] opacity-80',
-        default       => 'bg-white border-2 border-b-4 border-[#E4E4E7] hover:border-[#D4D4D8]',
+        default       => 'bg-white border-2 border-[#E4E4E7] hover:border-[#F9B92F] border-b-4 border-b-[#D4D4D8] hover:border-b-[#C98A06] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)]',
     };
 @endphp
 
 <article
+    x-data="{ open: {{ $defaultOpen ? 'true' : 'false' }} }"
     x-show="activeFilter === 'all' || activeFilter === '{{ $status }}'"
     x-transition.opacity.duration.200ms
-    class="{{ $cardClasses }} rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all"
+    class="group/card {{ $cardClasses }} rounded-2xl overflow-hidden transition-all duration-200"
 >
-    <!-- Kiri & Tengah: Ikon + Detail + Progress -->
-    <div class="flex items-start sm:items-center gap-4 flex-1 min-w-0 w-full">
-        <!-- Kotak Ikon 64x64 -->
-        @if ($status === 'completed')
-            <div class="relative w-16 h-16 rounded-xl bg-[#F0FDF4] flex items-center justify-center shrink-0">
-                <span class="font-bold text-xl text-[#22B05B] select-none">{{ $modul['visual_content'] ?? 'A-Z' }}</span>
-                <span class="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-[#22B05B] border-2 border-white flex items-center justify-center text-white shadow-2xs">
-                    <svg class="w-3 h-3" viewBox="0 0 12 10" fill="none">
-                        <path d="M1 5L4.5 8.5L11 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                </span>
-            </div>
-        @elseif ($status === 'in_progress')
-            <div class="w-16 h-16 rounded-xl bg-[#F9B92F]/20 flex items-center justify-center shrink-0">
-                <span class="font-bold text-[22px] text-[#C98A06] select-none">{{ $modul['visual_content'] ?? '123' }}</span>
-            </div>
-        @elseif ($status === 'locked')
-            <div class="w-16 h-16 rounded-xl bg-white/50 border-2 border-[#D4D4D8] flex items-center justify-center shrink-0">
-                <img src="{{ asset($modul['visual_content'] ?? 'images/dashboard/icon-hands.svg') }}" alt="" class="w-7 h-7 object-contain opacity-45 grayscale" />
-            </div>
-        @else
-            <div class="w-16 h-16 rounded-xl bg-[#F4F4F5] flex items-center justify-center shrink-0">
-                @if (($modul['visual_type'] ?? 'icon') === 'icon')
-                    <img src="{{ asset($modul['visual_content'] ?? 'images/dashboard/icon-hands.svg') }}" alt="" class="w-7 h-7 object-contain opacity-75" />
-                @else
-                    <span class="font-bold text-xl text-[#71717A] select-none">{{ $modul['visual_content'] ?? '' }}</span>
-                @endif
-            </div>
-        @endif
-
-        <!-- Info Modul -->
-        <div class="flex-1 min-w-0">
-            @if (! empty($modul['tag']) && $status === 'in_progress')
-                <span class="inline-block bg-[#C98A06]/15 text-[#C98A06] text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm mb-1">
-                    {{ $modul['tag'] }}
-                </span>
+    {{-- HEADER KARTU MODUL --}}
+    <div class="p-4 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-5">
+        <div class="flex items-start sm:items-center gap-4 flex-1 min-w-0">
+            {{-- Kotak Ikon --}}
+            @if ($status === 'completed')
+                <div class="relative w-13 h-13 sm:w-14 sm:h-14 shrink-0 bg-[#E9F9EF] border-2 border-[#22B05B] border-b-[3px] border-b-[#15803D] rounded-[14px] flex items-center justify-center transition-transform duration-200 group-hover/card:scale-105 group-hover/card:-rotate-2">
+                    <span class="text-base font-extrabold text-[#15803D] tracking-tight select-none">{{ $modul['visual_content'] ?? 'A-Z' }}</span>
+                    <span class="absolute -bottom-1.5 -right-1.5 w-[18px] h-[18px] bg-[#22B05B] border-2 border-white rounded-full flex items-center justify-center text-white text-[10px] font-bold leading-none">✓</span>
+                </div>
+            @elseif ($status === 'in_progress')
+                <div class="w-13 h-13 sm:w-14 sm:h-14 shrink-0 bg-white border-2 border-[#F9B92F] group-hover/card:border-[#D99B06] border-b-[3px] border-b-[#C98A06] rounded-[14px] flex items-center justify-center transition-all duration-200 group-hover/card:scale-105 group-hover/card:-rotate-2">
+                    <span class="text-base font-extrabold text-[#C98A06] tracking-tight select-none">{{ $modul['visual_content'] ?? '1 2 3' }}</span>
+                </div>
+            @elseif ($status === 'locked')
+                <div class="w-13 h-13 sm:w-14 sm:h-14 shrink-0 bg-[#E4E4E7]/70 border-2 border-[#D4D4D8] rounded-[14px] flex items-center justify-center text-[#71717A]">
+                    <flux:icon.lock-closed variant="mini" class="size-5" />
+                </div>
+            @else
+                <div class="w-13 h-13 sm:w-14 sm:h-14 shrink-0 bg-[#F4F4F5] group-hover/card:bg-[#FFF8E6] border-2 border-[#E4E4E7] group-hover/card:border-[#F9B92F] border-b-[3px] border-b-[#D4D4D8] group-hover/card:border-b-[#C98A06] rounded-[14px] flex items-center justify-center transition-all duration-200 group-hover/card:scale-105 group-hover/card:-rotate-2">
+                    <span class="text-sm font-extrabold text-[#52525B] group-hover/card:text-[#C98A06] select-none">{{ $modul['visual_content'] ?? '0' . ($modul['order'] ?? '') }}</span>
+                </div>
             @endif
 
-            <h3 class="text-lg sm:text-xl font-bold {{ $status === 'locked' ? 'text-[#71717A]' : 'text-[#1C1C1E]' }} leading-snug">
-                {{ $modul['title'] ?? 'Judul Modul' }}
-            </h3>
+            {{-- Judul, Deskripsi & Progress Bar --}}
+            <div class="flex flex-col gap-1 min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="text-base sm:text-lg font-extrabold {{ $status === 'locked' ? 'text-[#71717A]' : 'text-[#1C1C1E]' }}">
+                        {{ $modul['title'] ?? 'Judul Modul' }}
+                    </h3>
 
-            <p class="text-sm {{ $status === 'locked' ? 'text-[#A1A1AA]' : 'text-[#52525B]' }} mt-0.5 leading-relaxed">
-                {{ $modul['description'] ?? '' }}
-            </p>
+                    @if ($status === 'completed')
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-lg bg-[#E9F9EF] border-2 border-[#22B05B] text-[11px] font-extrabold text-[#15803D] tracking-wide uppercase">
+                            TUNTAS
+                        </span>
+                    @elseif ($status === 'in_progress')
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-lg bg-white border-2 border-[#F9B92F] group-hover/card:border-[#D99B06] text-[11px] font-extrabold text-[#C98A06] tracking-wide uppercase transition-colors">
+                            {{ $modul['tag'] ?? 'SEDANG AKTIF' }}
+                        </span>
+                    @endif
+                </div>
 
-            <!-- Tactile Progress Bar -->
-            @if ($status !== 'locked')
-                <div class="mt-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                    <div class="h-3 bg-[#E4E4E7] rounded-full flex-1 overflow-hidden">
-                        @if ($progress > 0)
-                            <div
-                                class="h-full {{ $status === 'completed' ? 'bg-[#22B05B]' : 'bg-[#F9B92F]' }} rounded-full relative overflow-hidden transition-all duration-500"
-                                style="width: {{ $progress }}%"
-                            >
-                                <div class="h-1 w-full bg-white/35 rounded-t-full"></div>
-                            </div>
-                        @endif
+                <p class="text-xs sm:text-sm {{ $status === 'locked' ? 'text-[#A1A1AA]' : 'text-[#52525B]' }} font-medium">
+                    {{ $modul['description'] ?? '' }}
+                </p>
+
+                @if ($status !== 'locked')
+                    <div class="flex flex-wrap items-center gap-3 mt-1">
+                        <div class="w-40 sm:w-52 h-2 bg-[#E4E4E7] rounded-full overflow-hidden">
+                            @if ($progress > 0)
+                                <div class="h-full {{ $status === 'completed' ? 'bg-[#22B05B]' : 'bg-[#F9B92F]' }} rounded-full transition-all duration-500" style="width: {{ $progress }}%"></div>
+                            @endif
+                        </div>
+
+                        <span class="text-xs font-extrabold {{ $status === 'completed' ? 'text-[#15803D]' : 'text-[#1C1C1E]' }}">
+                            @if ($status === 'completed')
+                                Tuntas 100% {{ !empty($modul['xp_reward']) ? '• +' . (int) $modul['xp_reward'] . ' XP' : '' }}
+                            @elseif ($status === 'in_progress')
+                                {{ $progress }}% Selesai ({{ $completedParts }}/{{ $totalParts }} Bagian)
+                            @else
+                                0/{{ $totalParts }} Bagian • Belum Dimulai
+                            @endif
+                        </span>
                     </div>
+                @endif
+            </div>
+        </div>
 
-                    <span class="text-xs font-bold whitespace-nowrap {{ match ($status) {
-                        'completed'   => 'text-[#15803D]',
-                        'in_progress' => 'text-[#C98A06]',
-                        default       => 'text-[#71717A]',
-                    } }}">
-                        @if ($status === 'completed')
-                            {{ $completedParts }}/{{ $totalParts }} Bagian • Selesai
-                        @elseif ($status === 'in_progress')
-                            {{ $completedParts }}/{{ $totalParts }} Bagian • {{ $progress }}%
-                        @else
-                            0/{{ $totalParts }} Bagian • Belum Dimulai
-                        @endif
-                    </span>
+        {{-- Tombol Aksi Header --}}
+        <div class="flex flex-wrap items-center gap-2.5 self-end lg:self-center shrink-0">
+            @if ($status !== 'locked' && ! empty($parts))
+                <button
+                    type="button"
+                    @click="open = !open"
+                    class="cursor-pointer bg-white hover:bg-[#FFF8E6] active:translate-y-0.5 active:border-b-2 border-2 border-b-[3px] {{ $status === 'in_progress' ? 'border-[#F9B92F] border-b-[#C98A06]' : 'border-[#E4E4E7] hover:border-[#F9B92F] border-b-[#D4D4D8] hover:border-b-[#C98A06]' }} rounded-[10px] px-3.5 py-2 text-xs font-extrabold text-[#1C1C1E] inline-flex items-center gap-1.5 transition-all"
+                >
+                    <span x-text="open ? 'Sembunyikan Bagian' : 'Lihat {{ count($parts) }} Bagian'"></span>
+                    <span class="text-[10px] transition-transform duration-200" :class="open ? 'rotate-180' : ''">▾</span>
+                </button>
+            @endif
+
+            @if ($status === 'completed')
+                <a href="{{ $modulUrl }}" @if ($modulUrl !== '#') wire:navigate @endif class="group/btn bg-white hover:bg-zinc-50 active:translate-y-0.5 active:border-b-2 border-2 border-[#E4E4E7] border-b-4 border-b-[#D4D4D8] rounded-xl px-4 py-2 text-xs sm:text-sm font-extrabold uppercase text-[#1C1C1E] transition-all inline-flex items-center gap-1.5">
+                    <span class="inline-block transition-transform duration-200 group-hover/btn:-rotate-45">↺</span>
+                    <span>Ulangi Semua</span>
+                </a>
+            @elseif ($status === 'in_progress')
+                <a href="{{ $continueUrl }}" @if ($continueUrl !== '#') wire:navigate @endif class="group/btn bg-[#F9B92F] hover:bg-[#fabf45] active:translate-y-0.5 active:border-b-2 border-2 border-[#C98A06] border-b-4 border-b-[#C98A06] rounded-xl px-5 py-2 text-xs sm:text-sm font-extrabold uppercase text-[#1C1C1E] transition-all inline-flex items-center gap-1.5">
+                    <span>Lanjutkan</span>
+                    <span class="inline-block transition-transform duration-200 group-hover/btn:translate-x-1">→</span>
+                </a>
+            @elseif ($status === 'not_started')
+                <a href="{{ $modulUrl }}" @if ($modulUrl !== '#') wire:navigate @endif class="group/btn bg-white group-hover/card:bg-[#F9B92F] hover:bg-[#fabf45] active:translate-y-0.5 active:border-b-2 border-2 border-[#E4E4E7] group-hover/card:border-[#C98A06] border-b-4 border-b-[#D4D4D8] group-hover/card:border-b-[#C98A06] rounded-xl px-5 py-2 text-xs sm:text-sm font-extrabold uppercase text-[#1C1C1E] transition-all inline-flex items-center gap-1.5">
+                    <span>Mulai</span>
+                    <span class="inline-block transition-transform duration-200 group-hover/btn:translate-x-1">→</span>
+                </a>
+            @else
+                <div class="inline-flex items-center gap-1.5 bg-[#E4E4E7] border-2 border-[#D4D4D8] rounded-xl px-4 py-2 text-xs sm:text-sm font-extrabold uppercase text-[#71717A] cursor-not-allowed select-none">
+                    <span>Terkunci</span>
+                    <flux:icon.lock-closed variant="micro" class="size-3.5" />
                 </div>
             @endif
         </div>
     </div>
 
-    <!-- Kanan: Tombol Aksi 3D -->
-    <div class="w-full sm:w-auto shrink-0">
-        @if ($status === 'completed')
-            <a href="{{ $modulUrl }}"
-               class="w-full sm:w-auto inline-flex items-center justify-center bg-white hover:bg-zinc-50 active:translate-y-0.5 active:border-b-2 border-2 border-b-4 border-[#E4E4E7] rounded-xl px-6 py-3 text-sm font-bold uppercase tracking-wider text-[#52525B] transition-all">
-                ULANGI
-            </a>
-        @elseif ($status === 'in_progress')
-            <a href="{{ $modulUrl }}"
-               class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#F9B92F] hover:bg-[#e5a825] active:translate-y-0.5 active:border-b-2 border-2 border-b-4 border-[#C98A06] rounded-xl px-7 py-3.5 text-[15px] font-bold uppercase tracking-wider text-[#1C1C1E] transition-all">
-                <span>LANJUTKAN</span>
-                <img src="{{ asset('images/dashboard/icon-arrow-right.svg') }}" alt="" class="w-3 h-3" />
-            </a>
-        @elseif ($status === 'not_started')
-            <a href="{{ $modulUrl }}"
-               class="w-full sm:w-auto inline-flex items-center justify-center bg-white hover:bg-zinc-50 active:translate-y-0.5 active:border-b-2 border-2 border-b-4 border-[#E4E4E7] rounded-xl px-6 py-3 text-sm font-bold uppercase tracking-wider text-[#1C1C1E] transition-all">
-                MULAI
-            </a>
-        @else
-            <div class="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 bg-[#E4E4E7] border-2 border-[#D4D4D8] rounded-xl px-6 py-3 text-sm font-bold uppercase tracking-wider text-[#71717A] cursor-not-allowed select-none">
-                <span>TERKUNCI</span>
-                <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd" />
-                </svg>
+    {{-- LACI DAFTAR BAGIAN --}}
+    @if ($status !== 'locked' && ! empty($parts))
+        <div x-show="open" x-transition.opacity.duration.200ms class="bg-[#FAFAFA] border-t-2 border-[#E4E4E7] p-4 sm:p-6">
+            <div class="text-xs font-extrabold text-[#71717A] tracking-widest uppercase mb-3">
+                Daftar Materi &amp; Latihan ({{ count($parts) }} Bagian)
             </div>
-        @endif
-    </div>
+
+            <div class="flex flex-col gap-2.5">
+                @foreach ($parts as $part)
+                    <x-modul-part-item
+                        :part="$part"
+                        :modul-slug="$modul['slug'] ?? ''"
+                        :index="$loop->iteration"
+                    />
+                @endforeach
+            </div>
+        </div>
+    @endif
 </article>
