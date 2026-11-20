@@ -61,6 +61,48 @@ select:focus[data-flux-control] {
     @apply outline-hidden ring-2 ring-accent ring-offset-2 ring-offset-accent-foreground;
 }
 
+@theme {
+  --font-brand: "Caveat Brush", cursive;
+
+  --color-yellow-primary: #F9B92F;
+  --color-yellow-light: #FEF8EA;
+  --color-yellow-pale: #FEF5E0;
+  --color-yellow-cream: #FDE9BF;
+  --color-yellow-active: #C79426;
+
+  --color-green-primary: #6B8A47;
+  --color-green-light: #E9EDE3;
+  --color-green-active: #D1DBC6;
+
+  --color-bg-page: #FAFAFA;
+  --color-text-main: #1F1F1F;
+  --color-text-muted: #828282;
+  --color-border-gray: #ADADAD;
+
+  --shadow-figma: 0px 6px 2px rgba(0, 0, 0, 0.25);
+  --shadow-card: 0px 8px 24px rgba(0, 0, 0, 0.06);
+  --shadow-hover: 0px 10px 20px rgba(0, 0, 0, 0.12);
+}
+
+@keyframes floatSubtle {
+  0% { transform: translateY(0px); }
+  100% { transform: translateY(-8px); }
+}
+
+@keyframes pulseBadge {
+  0% { transform: translateY(0px) scale(1) rotate(var(--rot, 0deg)); }
+  100% { transform: translateY(-4px) scale(1.03) rotate(var(--rot, 0deg)); }
+}
+
+.animate-float-subtle {
+  animation: floatSubtle 4s ease-in-out infinite alternate;
+}
+
+.animate-pulse-badge {
+  animation: pulseBadge 3s ease-in-out infinite alternate;
+}
+
+
 /* \[:where(&)\]:size-4 {
     @apply size-4;
 } */
