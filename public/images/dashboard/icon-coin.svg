@@ -1,0 +1,30 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="65.5963" height="61.6867" viewBox="0 0 65.5963 61.6867" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="coin">
+<ellipse id="Ellipse 1" cx="37.0074" cy="39.8171" rx="18.4466" ry="18.4466" fill="url(#paint0_linear_0_12)"/>
+<ellipse id="Ellipse 2" cx="37.0073" cy="39.8171" rx="12.5437" ry="12.5437" fill="#C79426"/>
+<g id="Ellipse 4" opacity="0.69" filter="url(#filter0_f_0_12)">
+<ellipse cx="32.7981" cy="30.8433" rx="13.1695" ry="7.91042" transform="rotate(-33.8038 32.7981 30.8433)" fill="#FDE9BF"/>
+</g>
+<path id="Star 1" d="M34.1769 33.4696C35.016 30.9199 38.63 30.9199 39.4691 33.4696V33.4696C39.842 34.6026 40.9123 35.3709 42.1051 35.3709V35.3709C44.7704 35.3709 45.9184 38.7884 43.7527 40.3419V40.3419C42.7792 41.0403 42.3722 42.2913 42.7467 43.4294V43.4294C43.5798 45.9609 40.628 48.0425 38.4625 46.489V46.489C37.4916 45.7926 36.1544 45.7926 35.1835 46.489V46.489C33.018 48.0425 30.0662 45.9609 30.8993 43.4294V43.4294C31.2738 42.2913 30.8668 41.0403 29.8933 40.3419V40.3419C27.7276 38.7884 28.8756 35.3709 31.5409 35.3709V35.3709C32.7337 35.3709 33.804 34.6026 34.1769 33.4696V33.4696Z" fill="#F9B92F"/>
+<g id="Ellipse 3" opacity="0.69" filter="url(#filter1_f_0_12)">
+<ellipse cx="28.7971" cy="27.2937" rx="8.03761" ry="3.07874" transform="rotate(-33.8038 28.7971 27.2937)" fill="#F7F7F7"/>
+</g>
+</g>
+<defs>
+<filter id="filter0_f_0_12" x="0" y="1.43051e-06" width="65.5963" height="61.6867" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+<feGaussianBlur stdDeviation="10.5" result="effect1_foregroundBlur_0_12"/>
+</filter>
+<filter id="filter1_f_0_12" x="9.90042" y="10.141" width="37.7933" height="34.3054" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+<feGaussianBlur stdDeviation="6" result="effect1_foregroundBlur_0_12"/>
+</filter>
+<linearGradient id="paint0_linear_0_12" x1="37.0074" y1="21.3705" x2="37.3763" y2="59.186" gradientUnits="userSpaceOnUse">
+<stop offset="0.281745" stop-color="#F9B92F"/>
+<stop offset="0.49" stop-color="#FFD579"/>
+<stop offset="0.709847" stop-color="#B48622"/>
+</linearGradient>
+</defs>
+</svg>
