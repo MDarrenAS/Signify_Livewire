@@ -40,8 +40,8 @@
             <div class="mx-auto flex max-w-[1320px] flex-col items-center justify-between gap-10 px-6 pt-10 pb-5 text-center lg:flex-row lg:gap-15 lg:py-10 lg:text-left">
                 <div class="flex w-full flex-1 basis-[480px] items-center justify-center">
                     <div class="relative flex aspect-[556/470] w-full max-w-[520px] items-center justify-center">
-                        <img src="{{ asset('images/hero-blob.svg') }}" alt="" aria-hidden="true" class="pointer-events-none absolute inset-0 z-1 h-full w-full object-contain" />
-                        <img src="{{ asset('images/hero-illustration.png') }}" alt="Dua orang sedang belajar bahasa isyarat BISINDO bersama" class="animate-float-subtle relative z-2 h-auto w-[86%] object-contain drop-shadow-[0px_8px_16px_rgba(0,0,0,0.08)]" />
+                        <img src="{{ asset('images/landing/hero-blob.svg') }}" alt="" aria-hidden="true" class="pointer-events-none absolute inset-0 z-1 h-full w-full object-contain" />
+                        <img src="{{ asset('images/landing/hero-illustration.png') }}" alt="Dua orang sedang belajar bahasa isyarat BISINDO bersama" fetchpriority="high" decoding="async" class="animate-float-subtle relative z-2 h-auto w-[86%] object-contain drop-shadow-[0px_8px_16px_rgba(0,0,0,0.08)]" />
                     </div>
                 </div>
 
@@ -73,7 +73,7 @@
             </div>
 
             <div class="-mb-0.5 block w-full overflow-hidden leading-none" aria-hidden="true">
-                <img src="{{ asset('images/section-scallop-wave.svg') }}" alt="" class="block h-[50px] w-full object-fill sm:h-[80px] lg:h-[110px]" />
+                <img src="{{ asset('images/landing/section-scallop-wave.svg') }}" alt="" class="block h-[50px] w-full object-fill sm:h-[80px] lg:h-[110px]" />
             </div>
         </section>
 
@@ -106,8 +106,8 @@
 
                 <div class="flex w-full flex-1 basis-[480px] items-center justify-center">
                     <div class="relative flex min-h-[400px] w-full max-w-[440px] items-end justify-center sm:min-h-[520px]">
-                        <img src="{{ asset('images/door-arch.svg') }}" alt="" aria-hidden="true" class="absolute top-0 left-1/2 z-1 h-auto w-[90%] -translate-x-1/2" />
-                        <img src="{{ asset('images/character-signify.png') }}" alt="Instruktur Signify memperagakan gerakan bahasa isyarat" class="relative z-2 mt-12.5 h-auto w-[95%] object-contain" />
+                        <img src="{{ asset('images/landing/door-arch.svg') }}" alt="" aria-hidden="true" class="absolute top-0 left-1/2 z-1 h-auto w-[90%] -translate-x-1/2" />
+                        <img src="{{ asset('images/landing/character-signify.png') }}" alt="Instruktur Signify memperagakan gerakan bahasa isyarat" loading="lazy" decoding="async" class="relative z-2 mt-12.5 h-auto w-[95%] object-contain" />
 
                         <div style="--rot: 5.9deg;" class="animate-pulse-badge absolute top-[10%] right-0 z-3 rounded-[20px] bg-yellow-primary px-3.5 py-1.5 text-[0.95rem] font-bold whitespace-nowrap text-green-primary shadow-[0px_6px_14px_rgba(0,0,0,0.12)] select-none sm:-right-[5%] sm:px-5.5 sm:py-2.5 sm:text-[1.35rem]">
                             GRATIS
@@ -138,87 +138,4 @@
                     </h2>
                 </div>
 
-                <div class="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-                    {{-- Card 1 --}}
-                    <article class="group relative flex flex-col justify-start overflow-hidden rounded-[20px] bg-yellow-primary px-7 py-9 shadow-card transition-all duration-250 hover:-translate-y-2 hover:shadow-hover lg:min-h-[470px] lg:px-8 lg:pt-10 lg:pb-12">
-                        <div class="pointer-events-none absolute top-[15px] -right-[25px] z-1 h-[217px] w-[217px] opacity-65" aria-hidden="true">
-                            <img src="{{ asset('images/card-pattern-circles.svg') }}" alt="" />
-                        </div>
-                        <div class="relative z-2 mb-9 flex h-24 w-24 items-center justify-center rounded-full bg-yellow-cream transition-transform duration-250 group-hover:scale-108 group-hover:rotate-4">
-                            <img src="{{ asset('images/open-book.svg') }}" alt="" class="h-12 w-12 object-contain" />
-                        </div>
-                        <div class="relative z-2 flex flex-col gap-5 text-black">
-                            <h3 class="text-2xl leading-[1.35] font-semibold">Kamus Isyarat<br />Visual</h3>
-                            <p class="text-base leading-[1.6] font-normal">
-                                Lihat ribuan video atau gambar contoh gerakan tangan dari berbagai sudut pandang yang jelas dan mudah ditiru.
-                            </p>
-                        </div>
-                    </article>
-
-                    {{-- Card 2 --}}
-                    <article class="group relative flex flex-col justify-start overflow-hidden rounded-[20px] bg-green-primary px-7 py-9 shadow-card transition-all duration-250 hover:-translate-y-2 hover:shadow-hover lg:min-h-[470px] lg:px-8 lg:pt-10 lg:pb-12">
-                        <div class="pointer-events-none absolute top-[25px] -right-[20px] z-1 w-[250px] opacity-80" aria-hidden="true">
-                            <img src="{{ asset('images/card-pattern-wave.svg') }}" alt="" />
-                        </div>
-                        <div class="relative z-2 mb-9 flex h-24 w-24 items-center justify-center rounded-full bg-green-active transition-transform duration-250 group-hover:scale-108 group-hover:rotate-4">
-                            <img src="{{ asset('images/compass.svg') }}" alt="" class="h-12 w-12 object-contain" />
-                        </div>
-                        <div class="relative z-2 flex flex-col gap-5 text-bg-page">
-                            <h3 class="text-2xl leading-[1.35] font-semibold">Latihan Praktik<br />Interaktif</h3>
-                            <p class="text-base leading-[1.6] font-normal">
-                                Latih gerakan tanganmu secara langsung di depan layar dengan panduan visual yang seru seperti bermain game!
-                            </p>
-                        </div>
-                    </article>
-
-                    {{-- Card 3 --}}
-                    <article class="group relative flex flex-col justify-start overflow-hidden rounded-[20px] bg-yellow-cream px-7 py-9 shadow-card transition-all duration-250 hover:-translate-y-2 hover:shadow-hover md:col-span-2 lg:col-span-1 lg:min-h-[470px] lg:px-8 lg:pt-10 lg:pb-12">
-                        <div class="pointer-events-none absolute -top-[15px] -right-[25px] z-1 h-[240px] w-[240px] rotate-[66deg] opacity-75" aria-hidden="true">
-                            <img src="{{ asset('images/card-pattern-spiral.svg') }}" alt="" />
-                        </div>
-                        <div class="relative z-2 mb-9 flex h-24 w-24 items-center justify-center rounded-full bg-yellow-pale transition-transform duration-250 group-hover:scale-108 group-hover:rotate-4">
-                            <img src="{{ asset('images/game-console.svg') }}" alt="" class="h-12 w-12 object-contain" />
-                        </div>
-                        <div class="relative z-2 flex flex-col gap-5 text-black">
-                            <h3 class="text-2xl leading-[1.35] font-semibold">Langkah Belajar<br />Rapi &amp; Santai</h3>
-                            <p class="text-base leading-[1.6] font-normal">
-                                Mulai dari abjad, kata sapaan manis, sampai obrolan sehari-hari langkah demi langkah tanpa rasa terbebani.
-                            </p>
-                        </div>
-                    </article>
-                </div>
-            </div>
-        </section>
-
-        {{-- ================= SECTION 4: CALL TO ACTION BANNER ================= --}}
-        <section class="relative overflow-hidden bg-yellow-primary pt-10 lg:pt-15">
-            <div class="pointer-events-none absolute top-12.5 left-0 z-1 w-[clamp(140px,18vw,267px)]" aria-hidden="true">
-                <img src="{{ asset('images/direction-arrows.svg') }}" alt="" class="h-auto w-full" />
-            </div>
-
-            <div class="relative z-2 mx-auto max-w-[820px] px-6">
-                <div class="flex flex-col items-center gap-8 text-center">
-                    <h2 class="text-[2rem] leading-[1.2] font-semibold text-black sm:text-4xl lg:text-[3rem]">
-                        Satu Gerakan, Ribuan Makna
-                    </h2>
-                    <p class="max-w-[720px] text-lg leading-[1.45] font-normal text-black sm:text-xl lg:text-2xl">
-                        Tidak ada kata terlambat untuk mulai belajar. Kuasai bahasa isyarat dengan modul interaktif kami dan jadilah bagian dari masyarakat tanpa batas komunikasi.
-                    </p>
-                    <a
-                        href="{{ Route::has('register') ? route('register') : (Route::has('home') ? route('home') : '#beranda') }}"
-                        class="inline-flex w-full items-center justify-center rounded-[20px] bg-white px-6 py-4 text-lg font-bold text-yellow-primary shadow-[0px_8px_20px_rgba(0,0,0,0.15)] transition-all duration-250 hover:-translate-y-0.5 hover:bg-[#FFFCEF] hover:shadow-[0px_12px_24px_rgba(0,0,0,0.2)] active:translate-y-px sm:w-auto sm:px-12 sm:py-5 lg:text-2xl"
-                    >
-                        Mulai Perjalananmu
-                    </a>
-                </div>
-            </div>
-
-            <div class="relative z-2 mx-auto mt-10 w-full max-w-[1320px] leading-none">
-                <img src="{{ asset('images/banner-signers.png') }}" alt="Sekelompok orang mempraktikkan berbagai gerakan bahasa isyarat" class="block h-auto w-full object-contain" />
-            </div>
-        </section>
-    </main>
-
-    <x-landing.footer />
-</body>
-</html>
+                <div class="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-
