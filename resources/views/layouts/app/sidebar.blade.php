@@ -1,338 +1,129 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="light" style="color-scheme: light;">
 <head>
     @include('partials.head')
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Caveat+Brush&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            background: #FAFAFA;
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            color: #1F1F1F;
-        }
-
-        .app-layout {
-            min-height: 100vh;
-            display: flex;
-            padding: 14px 16px;
-            gap: 18px;
-            background: #FAFAFA;
-            max-width: 1600px;
-            margin: 0 auto;
-        }
-
-        .app-sidebar {
-            width: 245px;
-            min-width: 230px;
-            min-height: calc(100vh - 28px);
-            background: #FAFAFA;
-            border-radius: 18px;
-            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.04);
-            border: 1px solid #EDEDED;
-            padding: 28px 18px;
-            display: flex;
-            flex-direction: column;
-            position: sticky;
-            top: 14px;
-            height: fit-content;
-            flex-shrink: 0;
-        }
-
-        .app-logo {
-            font-family: 'Caveat Brush', cursive;
-            font-size: 46px;
-            color: #F9B92F;
-            text-align: center;
-            text-decoration: none;
-            margin-bottom: 32px;
-            line-height: 1.1;
-            display: block;
-        }
-
-        .sidebar-menu {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .sidebar-menu a {
-            display: flex;
-            align-items: center;
-            gap: 13px;
-            padding: 11px 14px;
-            border-radius: 12px;
-            color: #8A8A8A;
-            font-size: 16px;
-            font-weight: 600;
-            text-decoration: none;
-            transition: all 0.18s ease;
-            white-space: nowrap;
-        }
-
-        .sidebar-menu a:hover {
-            background: #FEF8EA;
-            color: #1F1F1F;
-        }
-
-        .sidebar-menu a.active {
-            background: #FEF8EA;
-            color: #000000;
-        }
-
-        .sidebar-menu a img {
-            width: 26px;
-            height: 26px;
-            flex-shrink: 0;
-            object-fit: contain;
-        }
-
-        .sidebar-bottom {
-            margin-top: auto;
-            padding-top: 32px;
-        }
-
-        .sidebar-user {
-            padding: 12px 14px;
-            background: #FEF5E0;
-            border-radius: 12px;
-            margin-bottom: 10px;
-        }
-
-        .sidebar-user strong {
-            display: block;
-            font-size: 14px;
-            color: #1F1F1F;
-            margin-bottom: 2px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .sidebar-user span {
-            font-size: 11px;
-            color: #828282;
-            overflow-wrap: anywhere;
-            display: block;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .logout-button {
-            width: 100%;
-            padding: 10px;
-            background: #FFF;
-            border: 1px solid #D4D4D8;
-            border-radius: 10px;
-            color: #828282;
-            font-family: inherit;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: 0.2s ease;
-        }
-
-        .logout-button:hover {
-            background: #FEF5E0;
-            color: #C79426;
-            border-color: #F9B92F;
-        }
-
-        .app-main {
-            flex: 1;
-            min-width: 0;
-            background: #FAFAFA;
-            border-radius: 18px;
-            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.04);
-            border: 1px solid #EDEDED;
-            padding: 28px 30px;
-        }
-
-        /* Mobile Header */
-        .mobile-header {
-            display: none;
-            align-items: center;
-            justify-content: space-between;
-            background: #FAFAFA;
-            border-radius: 14px;
-            padding: 10px 18px;
-            margin-bottom: 14px;
-            box-shadow: 0 2px 8px rgba(0,0,0,.05);
-            border: 1px solid #EDEDED;
-        }
-
-        .mobile-header .app-logo {
-            font-size: 38px;
-            margin: 0;
-            text-align: left;
-        }
-
-        .mobile-toggle-btn {
-            background: transparent;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #1F1F1F;
-            padding: 4px;
-            border-radius: 8px;
-        }
-
-        @media (max-width: 1024px) {
-            .app-sidebar {
-                width: 220px;
-                min-width: 200px;
-                padding: 22px 14px;
-            }
-
-            .sidebar-menu a {
-                font-size: 15px;
-                gap: 10px;
-                padding: 9px 11px;
-            }
-
-            .sidebar-menu a img {
-                width: 22px;
-                height: 22px;
-            }
-
-            .app-main {
-                padding: 22px 20px;
-            }
-        }
-
-        @media (max-width: 860px) {
-            .mobile-header {
-                display: flex;
-            }
-
-            .app-layout {
-                flex-direction: column;
-                padding: 10px;
-                gap: 12px;
-            }
-
-            .app-sidebar {
-                display: none;
-                width: 100%;
-                min-height: auto;
-                position: static;
-                padding: 18px;
-            }
-
-            .app-sidebar.show-mobile {
-                display: flex;
-            }
-
-            .app-logo {
-                display: none;
-            }
-
-            .sidebar-menu {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
-                gap: 6px;
-            }
-
-            .sidebar-menu a {
-                font-size: 14px;
-                padding: 8px 10px;
-                gap: 8px;
-            }
-
-            .sidebar-menu a img {
-                width: 20px;
-                height: 20px;
-            }
-
-            .app-main {
-                padding: 18px 14px;
-            }
-        }
-    </style>
 </head>
 
-<body>
-    <div class="app-layout">
-        <!-- Mobile Header Bar -->
-        <header class="mobile-header">
-            <a href="{{ route('dashboard') }}" class="app-logo" style="display:inline-block;">
-                Signify
-            </a>
-            <button type="button" class="mobile-toggle-btn" onclick="toggleSidebar()" aria-label="Toggle Navigation">
-                ☰
-            </button>
-        </header>
+<body class="min-h-screen bg-[#FAFAFA] font-['Plus_Jakarta_Sans'] text-[#1F1F1F] antialiased">
+    {{-- Mobile Header --}}
+    <flux:header class="lg:hidden bg-[#FAFAFA] border-b border-[#EDEDED] px-4 py-2.5">
+        <flux:sidebar.toggle class="lg:hidden !text-[#1F1F1F]" icon="bars-2" inset="left" />
 
-        <aside class="app-sidebar" id="appSidebar">
-            <a href="{{ route('dashboard') }}" class="app-logo" wire:navigate>
-                Signify
-            </a>
+        <a href="{{ Route::has('dashboard') ? route('dashboard') : '#' }}"
+           class="font-['Caveat_Brush'] text-4xl text-[#F9B92F] leading-none ms-2 select-none"
+           wire:navigate>
+            Signify
+        </a>
 
-            <nav class="sidebar-menu">
-                <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}" wire:navigate>
-                    <img src="{{ asset('images/dashboard/icon-dashboard.svg') }}" alt="" />
-                    <span>Dashboard</span>
-                </a>
+        <flux:spacer />
+    </flux:header>
 
-                <a href="{{ route('modul.index') }}" class="{{ request()->routeIs('modul.*') ? 'active' : '' }}" wire:navigate>
-                    <img src="{{ asset('images/dashboard/icon-book.svg') }}" alt="" />
-                    <span>Modul Belajar</span>
-                </a>
+    {{-- Sidebar Utama --}}
+    <flux:sidebar
+        sticky
+        stashable
+        class="w-64 bg-[#FAFAFA] border-e border-[#EDEDED] px-4 py-6 lg:my-3.5 lg:ms-4 lg:h-[calc(100vh-28px)] lg:rounded-[18px] lg:border lg:shadow-[0_4px_18px_rgba(0,0,0,0.07),0_1px_3px_rgba(0,0,0,0.04)]"
+    >
+        <flux:sidebar.toggle class="lg:hidden self-end !text-[#1F1F1F]" icon="x-mark" />
 
-                <a href="{{ route('latihan.index') }}" class="{{ request()->routeIs('latihan.*') ? 'active' : '' }}" wire:navigate>
-                    <img src="{{ asset('images/dashboard/icon-quiz.svg') }}" alt="" />
-                    <span>Latihan dan Kuis</span>
-                </a>
+        {{-- Logo --}}
+        <a href="{{ Route::has('dashboard') ? route('dashboard') : '#' }}"
+           class="font-['Caveat_Brush'] text-[44px] text-[#F9B92F] text-center leading-none mb-7 block select-none"
+           wire:navigate>
+            Signify
+        </a>
 
-                <a href="{{ route('kamus.index') }}" class="{{ request()->routeIs('kamus.*') ? 'active' : '' }}" wire:navigate>
-                    <img src="{{ asset('images/dashboard/icon-translate.svg') }}" alt="" />
-                    <span>Kamus BISINDO</span>
-                </a>
+        {{-- Menu Navigasi --}}
+        <flux:navlist variant="outline" class="space-y-1">
+            <flux:navlist.item
+                icon="squares-2x2"
+                :href="Route::has('dashboard') ? route('dashboard') : '#'"
+                :current="request()->routeIs('dashboard')"
+                class="!rounded-xl !py-2.5 !text-[15px] !font-semibold !text-[#8A8A8A] hover:!bg-[#FEF8EA] hover:!text-[#1F1F1F] data-[current]:!bg-[#FEF8EA] data-[current]:!text-black"
+                wire:navigate
+            >
+                Dashboard
+            </flux:navlist.item>
 
-                <a href="{{ route('profile.edit') }}" class="{{ request()->routeIs('profile.*') ? 'active' : '' }}" wire:navigate>
-                    <img src="{{ asset('images/dashboard/icon-profile.svg') }}" alt="" />
-                    <span>Profil</span>
-                </a>
-            </nav>
+            <flux:navlist.item
+                icon="book-open"
+                :href="Route::has('modul.index') ? route('modul.index') : '#'"
+                :current="request()->routeIs('modul.*')"
+                class="!rounded-xl !py-2.5 !text-[15px] !font-semibold !text-[#8A8A8A] hover:!bg-[#FEF8EA] hover:!text-[#1F1F1F] data-[current]:!bg-[#FEF8EA] data-[current]:!text-black"
+                wire:navigate
+            >
+                Modul Belajar
+            </flux:navlist.item>
 
-            <div class="sidebar-bottom">
-                <div class="sidebar-user">
-                    <strong>{{ auth()->user()->name ?? 'Alifah' }}</strong>
-                    <span>{{ auth()->user()->email ?? 'alifah@example.com' }}</span>
-                </div>
+            <flux:navlist.item
+                icon="clipboard-document-check"
+                :href="Route::has('latihan.index') ? route('latihan.index') : '#'"
+                :current="request()->routeIs('latihan.*')"
+                class="!rounded-xl !py-2.5 !text-[15px] !font-semibold !text-[#8A8A8A] hover:!bg-[#FEF8EA] hover:!text-[#1F1F1F] data-[current]:!bg-[#FEF8EA] data-[current]:!text-black"
+                wire:navigate
+            >
+                Latihan dan Kuis
+            </flux:navlist.item>
 
-                @auth
-                    <form method="POST" action="{{ route('logout') }}">
-                        @csrf
-                        <button type="submit" class="logout-button">
-                            ↪ Keluar
-                        </button>
-                    </form>
-                @endauth
+            <flux:navlist.item
+                icon="language"
+                :href="Route::has('kamus.index') ? route('kamus.index') : '#'"
+                :current="request()->routeIs('kamus.*')"
+                class="!rounded-xl !py-2.5 !text-[15px] !font-semibold !text-[#8A8A8A] hover:!bg-[#FEF8EA] hover:!text-[#1F1F1F] data-[current]:!bg-[#FEF8EA] data-[current]:!text-black"
+                wire:navigate
+            >
+                Kamus BISINDO
+            </flux:navlist.item>
+
+            <flux:navlist.item
+                icon="user"
+                :href="Route::has('profile.edit') ? route('profile.edit') : '#'"
+                :current="request()->routeIs('profile.*')"
+                class="!rounded-xl !py-2.5 !text-[15px] !font-semibold !text-[#8A8A8A] hover:!bg-[#FEF8EA] hover:!text-[#1F1F1F] data-[current]:!bg-[#FEF8EA] data-[current]:!text-black"
+                wire:navigate
+            >
+                Profil
+            </flux:navlist.item>
+        </flux:navlist>
+
+        <flux:spacer />
+
+        {{-- Info User & Tombol Keluar --}}
+        <div class="pt-6 space-y-2.5">
+            <div class="bg-[#FEF5E0] rounded-xl px-3.5 py-3">
+                <strong class="block text-sm font-bold text-[#1F1F1F] truncate">
+                    {{ auth()->user()->name ?? 'Alifah' }}
+                </strong>
+                <span class="block text-[11px] text-[#828282] truncate mt-0.5">
+                    {{ auth()->user()->email ?? 'alifah@example.com' }}
+                </span>
             </div>
-        </aside>
 
-        <main class="app-main">
+            @auth
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button
+                        type="submit"
+                        class="w-full py-2.5 px-3 bg-white border border-[#D4D4D8] rounded-[10px] text-[#828282] text-[13px] font-semibold cursor-pointer transition-colors hover:bg-[#FEF5E0] hover:text-[#C79426] hover:border-[#F9B92F] flex items-center justify-center gap-1.5"
+                    >
+                        <flux:icon.arrow-right-start-on-rectangle variant="micro" class="size-4" />
+                        <span>Keluar</span>
+                    </button>
+                </form>
+            @endauth
+        </div>
+    </flux:sidebar>
+
+    {{-- Area Konten Utama --}}
+    <flux:main class="!p-3 sm:!p-4 lg:!py-3.5 lg:!px-4">
+        <div class="min-h-[calc(100vh-28px)] bg-[#FAFAFA] rounded-[18px] border border-[#EDEDED] shadow-[0_4px_18px_rgba(0,0,0,0.07),0_1px_3px_rgba(0,0,0,0.04)] p-4 sm:p-6 lg:p-7 max-w-[1360px] mx-auto">
             {{ $slot }}
-        </main>
-    </div>
-
-    <script>
-        function toggleSidebar() {
-            const sidebar = document.getElementById('appSidebar');
-            if (sidebar) {
-                sidebar.classList.toggle('show-mobile');
-            }
-        }
-    </script>
+        </div>
+    </flux:main>
 
     @persist('toast')
         <flux:toast.group>
