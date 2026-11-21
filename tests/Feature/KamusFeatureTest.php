@@ -183,6 +183,44 @@ it('forbids non-admin users from the Kamus management page', function (): void {
         ->assertForbidden();
 });
 
+it('filters admin entries and loads their database fields and media into the edit modal', function (): void {
+    $admin = User::factory()->admin()->create();
+    $category = LibraryCategory::factory()->create(['name' => 'Huruf']);
+    $otherCategory = LibraryCategory::factory()->create(['name' => 'Kata']);
+    $item = LibraryItem::factory()
+        ->for($category, 'category')
+        ->create([
+            'title' => 'A',
+            'slug' => 'huruf-a',
+            'meaning' => 'Greeting meaning',
+        ]);
+    $otherItem = LibraryItem::factory()
+        ->for($otherCategory, 'category')
+        ->create(['title' => 'Halo', 'slug' => 'kata-halo']);
+    $media = LibraryMedia::factory()->create(['alt_text' => 'Contoh isyarat A']);
+    $item->media()->attach($media->id, [
+        'sort_order' => 0,
+        'is_primary' => true,
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test('pages::admin.kamus.index')
+        ->assertSee($item->title)
+        ->assertSee($otherItem->title)
+        ->set('categoryFilter', (string) $category->id)
+        ->assertSee($item->title)
+        ->assertDontSee($otherItem->title)
+        ->set('search', 'Greeting meaning')
+        ->assertSee($item->title)
+        ->assertDontSee($otherItem->title)
+        ->call('edit', $item->id)
+        ->assertSet('showModal', true)
+        ->assertSet('title', $item->title)
+        ->assertSet('meaning', $item->meaning)
+        ->assertSee('Contoh isyarat A')
+        ->assertSee('Makna');
+});
+
 it('requires a published category before publishing an entry', function (): void {
     $category = LibraryCategory::factory()->create(['status' => 'draft']);
     $admin = User::factory()->admin()->create();

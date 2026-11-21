@@ -14,12 +14,14 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
-new class extends Component
+new #[Layout('layouts::admin')] #[Title('Kelola Kamus — Admin Signify')] class extends Component
 {
     use WithFileUploads;
     use WithPagination;
@@ -48,6 +50,10 @@ new class extends Component
 
     public string $search = '';
 
+    public string $categoryFilter = 'all';
+
+    public bool $showModal = false;
+
     public string $mediaSearch = '';
 
     /** @var array<int, int|string> */
@@ -70,18 +76,34 @@ new class extends Component
         $this->authorizeAdmin();
 
         return LibraryItem::query()
-            ->with('category')
+            ->with(['category', 'media'])
             ->when(trim($this->search) !== '', function (Builder $query): void {
                 $search = '%'.trim($this->search).'%';
 
                 $query->where(function (Builder $query) use ($search): void {
                     $query->where('title', 'like', $search)
-                        ->orWhere('slug', 'like', $search);
+                        ->orWhere('slug', 'like', $search)
+                        ->orWhere('meaning', 'like', $search)
+                        ->orWhere('description', 'like', $search)
+                        ->orWhere('movement_description', 'like', $search);
                 });
+            })
+            ->when($this->categoryFilter !== 'all', function (Builder $query): void {
+                $query->where('category_id', (int) $this->categoryFilter);
             })
             ->orderBy('sort_order')
             ->orderBy('title')
             ->paginate(15);
+    }
+
+    public function updatingSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingCategoryFilter(): void
+    {
+        $this->resetPage();
     }
 
     #[Computed]
@@ -137,7 +159,36 @@ new class extends Component
     public function newEntry(): void
     {
         $this->authorizeAdmin();
-        $this->reset();
+
+        $this->resetForm();
+        $this->showModal = true;
+    }
+
+    public function closeModal(): void
+    {
+        $this->authorizeAdmin();
+
+        $this->showModal = false;
+        $this->resetForm();
+    }
+
+    private function resetForm(): void
+    {
+        $this->itemId = null;
+        $this->categoryId = 0;
+        $this->title = '';
+        $this->slug = '';
+        $this->itemType = 'word';
+        $this->meaning = null;
+        $this->description = null;
+        $this->movementDescription = null;
+        $this->exampleUsage = null;
+        $this->sortOrder = 0;
+        $this->status = 'draft';
+        $this->selectedMediaIds = [];
+        $this->upload = null;
+        $this->uploadAltText = null;
+        $this->uploadCaption = null;
         $this->resetValidation();
         $this->resetPage();
     }
@@ -166,7 +217,10 @@ new class extends Component
             ->map(fn (int $id): string => (string) $id)
             ->all();
         $this->upload = null;
+        $this->uploadAltText = null;
+        $this->uploadCaption = null;
         $this->resetValidation();
+        $this->showModal = true;
     }
 
     public function save(): void
@@ -246,8 +300,8 @@ new class extends Component
 
         $this->itemId = $item->id;
 
-        if ($this->upload !== null) {
-            $this->storeUpload($item);
+        if ($this->upload !== null && ! $this->storeUpload($item)) {
+            return;
         }
 
         $this->selectedMediaIds = $item->media()
@@ -255,6 +309,7 @@ new class extends Component
             ->map(fn (int $id): string => (string) $id)
             ->all();
 
+        $this->showModal = false;
         session()->flash('status', 'Entri Kamus berhasil disimpan.');
     }
 
@@ -265,7 +320,7 @@ new class extends Component
         LibraryItem::query()->findOrFail($itemId)->delete();
 
         if ($this->itemId === $itemId) {
-            $this->newEntry();
+            $this->closeModal();
         }
 
         session()->flash('status', 'Entri Kamus berhasil dihapus.');
@@ -342,7 +397,7 @@ new class extends Component
         });
     }
 
-    private function storeUpload(LibraryItem $item): void
+    private function storeUpload(LibraryItem $item): bool
     {
         $mimeType = $this->upload->getMimeType();
         $extension = $this->upload->extension();
@@ -350,7 +405,7 @@ new class extends Component
         if (! is_string($mimeType) || $extension === '') {
             $this->addError('upload', 'Jenis file tidak dapat ditentukan.');
 
-            return;
+            return false;
         }
 
         try {
@@ -363,13 +418,13 @@ new class extends Component
             report($exception);
             $this->addError('upload', 'File gagal diunggah. Entri sudah tersimpan; silakan coba lagi.');
 
-            return;
+            return false;
         }
 
         if (! is_string($path)) {
             $this->addError('upload', 'File gagal diunggah. Entri sudah tersimpan; silakan coba lagi.');
 
-            return;
+            return false;
         }
 
         try {
@@ -409,6 +464,8 @@ new class extends Component
         $this->upload = null;
         $this->uploadAltText = null;
         $this->uploadCaption = null;
+
+        return true;
     }
 
     private function authorizeAdmin(): void
@@ -418,194 +475,165 @@ new class extends Component
 };
 ?>
 
-<div class="mx-auto max-w-6xl space-y-8 p-6">
-    <header class="flex flex-wrap items-center justify-between gap-4">
-        <h1 class="text-2xl font-semibold">Kelola Kamus</h1>
-        <a href="{{ route('kamus.index') }}" wire:navigate class="underline">Lihat Kamus</a>
-    </header>
+<div class="space-y-6">
+    <x-admin.page-header
+        title="Kamus Kosakata BISINDO"
+        subtitle="Kelola kosakata, kategori, deskripsi gerakan, serta media Kamus."
+    >
+        <x-slot:actions>
+            <button
+                type="button"
+                wire:click="newEntry"
+                class="inline-flex items-center gap-2 rounded-xl border-2 border-b-4 border-[#C98A06] bg-[#F9B92F] px-4 py-2.5 text-xs font-extrabold text-[#1C1C1E] shadow-xs transition-all hover:bg-[#fabf45] active:translate-y-0.5 active:border-b-2 sm:text-sm"
+            >
+                <flux:icon.plus class="size-4" />
+                <span>Tambah Kosakata</span>
+            </button>
+        </x-slot:actions>
+    </x-admin.page-header>
 
     @if (session('status'))
-        <p role="status">{{ session('status') }}</p>
+        <p role="status" class="rounded-xl border border-[#86EFAC] bg-[#F0FDF4] px-4 py-3 text-sm font-semibold text-[#15803D]">
+            {{ session('status') }}
+        </p>
     @endif
 
-    <section class="space-y-4">
-        <h2 class="text-xl font-medium">{{ $itemId ? 'Edit entri' : 'Entri baru' }}</h2>
-
-        <form wire:submit="save" class="grid gap-4 md:grid-cols-2">
-            <label class="grid gap-1">
-                Kategori
-                <select wire:model="categoryId">
-                    <option value="0">Pilih kategori</option>
-                    @foreach ($this->categories as $category)
-                        <option value="{{ $category->id }}">{{ $category->name }}</option>
-                    @endforeach
-                </select>
-                @error('categoryId') <span>{{ $message }}</span> @enderror
-            </label>
-
-            <label class="grid gap-1">
-                Judul / isyarat
-                <input type="text" wire:model="title" maxlength="255">
-                @error('title') <span>{{ $message }}</span> @enderror
-            </label>
-
-            <label class="grid gap-1">
-                Slug
-                <input type="text" wire:model="slug" maxlength="255">
-                @error('slug') <span>{{ $message }}</span> @enderror
-            </label>
-
-            <label class="grid gap-1">
-                Jenis
-                <select wire:model="itemType">
-                    <option value="alphabet">Huruf</option>
-                    <option value="number">Angka</option>
-                    <option value="word">Kata</option>
-                    <option value="phrase">Frasa</option>
-                    <option value="expression">Ekspresi</option>
-                </select>
-                @error('itemType') <span>{{ $message }}</span> @enderror
-            </label>
-
-            <label class="grid gap-1">
-                Makna
-                <textarea wire:model="meaning" rows="2"></textarea>
-                @error('meaning') <span>{{ $message }}</span> @enderror
-            </label>
-
-            <label class="grid gap-1">
-                Deskripsi
-                <textarea wire:model="description" rows="2"></textarea>
-                @error('description') <span>{{ $message }}</span> @enderror
-            </label>
-
-            <label class="grid gap-1">
-                Deskripsi gerakan
-                <textarea wire:model="movementDescription" rows="2"></textarea>
-                @error('movementDescription') <span>{{ $message }}</span> @enderror
-            </label>
-
-            <label class="grid gap-1">
-                Contoh penggunaan
-                <textarea wire:model="exampleUsage" rows="2"></textarea>
-                @error('exampleUsage') <span>{{ $message }}</span> @enderror
-            </label>
-
-            <label class="grid gap-1">
-                Urutan
-                <input type="number" wire:model="sortOrder" min="0">
-                @error('sortOrder') <span>{{ $message }}</span> @enderror
-            </label>
-
-            <label class="grid gap-1">
-                Status
-                <select wire:model="status">
-                    <option value="draft">Draft</option>
-                    <option value="published">Terbit</option>
-                    <option value="archived">Arsip</option>
-                </select>
-                @error('status') <span>{{ $message }}</span> @enderror
-            </label>
-
-            <fieldset class="space-y-3 md:col-span-2">
-                <legend class="font-medium">Media terpasang (urutan pertama menjadi media utama)</legend>
-
-                @forelse ($this->selectedMedia as $index => $media)
-                    <div wire:key="selected-media-{{ $media->id }}" class="flex flex-wrap items-center gap-3">
-                        <span>{{ $media->media_type }} · {{ $media->mime_type }} · {{ basename($media->storage_path) }}</span>
-                        <button type="button" wire:click="moveMedia({{ $media->id }}, -1)" @disabled($index === 0)>
-                            Naik
-                        </button>
-                        <button
-                            type="button"
-                            wire:click="moveMedia({{ $media->id }}, 1)"
-                            @disabled($index === $this->selectedMedia->count() - 1)
-                        >
-                            Turun
-                        </button>
-                        <button type="button" wire:click="removeMedia({{ $media->id }})">Lepas</button>
-                    </div>
-                @empty
-                    <p>Belum ada media terpasang.</p>
-                @endforelse
-
-                <label class="grid gap-1">
-                    Cari media yang sudah diunggah
-                    <input type="search" wire:model.live.debounce.300ms="mediaSearch">
-                </label>
-
-                @forelse ($this->mediaOptions as $media)
-                    <label wire:key="media-option-{{ $media->id }}" class="flex items-center gap-2">
-                        <input type="checkbox" wire:model="selectedMediaIds" value="{{ $media->id }}">
-                        <span>{{ $media->media_type }} · {{ $media->mime_type }} · {{ basename($media->storage_path) }}</span>
-                    </label>
-                @empty
-                    <p>Tidak ada media yang cocok.</p>
-                @endforelse
-
-                @error('selectedMediaIds') <span>{{ $message }}</span> @enderror
-                @error('selectedMediaIds.*') <span>{{ $message }}</span> @enderror
-            </fieldset>
-
-            <fieldset class="space-y-3 md:col-span-2">
-                <legend class="font-medium">Unggah media baru</legend>
-                <input
-                    type="file"
-                    wire:model="upload"
-                    accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
-                >
-                @error('upload') <span>{{ $message }}</span> @enderror
-
-                <label class="grid gap-1">
-                    Teks alternatif
-                    <input type="text" wire:model="uploadAltText" maxlength="255">
-                    @error('uploadAltText') <span>{{ $message }}</span> @enderror
-                </label>
-
-                <label class="grid gap-1">
-                    Keterangan media
-                    <input type="text" wire:model="uploadCaption" maxlength="255">
-                    @error('uploadCaption') <span>{{ $message }}</span> @enderror
-                </label>
-            </fieldset>
-
-            <div class="flex gap-3 md:col-span-2">
-                <button type="submit" wire:loading.attr="disabled">Simpan entri</button>
-                <button type="button" wire:click="newEntry">Entri baru</button>
-            </div>
-        </form>
-    </section>
-
-    <section class="space-y-4">
-        <h2 class="text-xl font-medium">Entri Kamus</h2>
-        <label class="grid max-w-md gap-1">
-            Cari judul atau slug
-            <input type="search" wire:model.live.debounce.300ms="search">
+    <div class="flex flex-col gap-3 rounded-2xl border-2 border-b-4 border-[#E4E4E7] bg-white p-4 sm:flex-row">
+        <label class="relative flex-1">
+            <span class="sr-only">Cari kosakata</span>
+            <input
+                type="search"
+                wire:model.live.debounce.300ms="search"
+                placeholder="Cari kata atau arti dalam Kamus BISINDO..."
+                class="w-full rounded-xl border-2 border-[#E4E4E7] py-2.5 pl-10 pr-4 text-xs font-medium transition-colors focus:border-[#F9B92F] focus:outline-none sm:text-sm"
+            >
+            <flux:icon.magnifying-glass class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[#71717A]" />
         </label>
 
-        <div class="space-y-3">
-            @forelse ($this->items as $item)
-                <article wire:key="library-item-{{ $item->id }}" class="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                        <h3 class="font-medium">{{ $item->title }}</h3>
-                        <p>{{ $item->category->name }} · {{ $item->status }} · {{ $item->slug }}</p>
-                    </div>
-                    <div class="flex gap-3">
-                        <button type="button" wire:click="edit({{ $item->id }})">Edit</button>
-                        <button
-                            type="button"
-                            wire:click="delete({{ $item->id }})"
-                            wire:confirm="Hapus entri Kamus ini?"
-                        >
-                            Hapus
-                        </button>
-                    </div>
-                </article>
-            @empty
-                <p>Belum ada entri Kamus.</p>
-            @endforelse
-        </div>
+        <label>
+            <span class="sr-only">Filter kategori</span>
+            <select
+                wire:model.live="categoryFilter"
+                class="cursor-pointer rounded-xl border-2 border-[#E4E4E7] bg-white px-4 py-2.5 text-xs font-extrabold text-[#1C1C1E] focus:border-[#F9B92F] focus:outline-none sm:text-sm"
+            >
+                <option value="all">Semua Kategori</option>
+                @foreach ($this->categories as $category)
+                    <option value="{{ $category->id }}">{{ $category->name }}</option>
+                @endforeach
+            </select>
+        </label>
+    </div>
 
-        {{ $this->items->links() }}
-    </section>
+    <div class="overflow-hidden rounded-2xl border-2 border-b-4 border-[#E4E4E7] bg-white shadow-2xs">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-left">
+                <thead>
+                    <tr class="border-b border-[#E4E4E7] bg-[#FAFAFA] text-[11px] font-extrabold uppercase tracking-wider text-[#71717A]">
+                        <th class="px-5 py-3.5">Kata / Isyarat</th>
+                        <th class="px-4 py-3.5">Kategori</th>
+                        <th class="px-4 py-3.5">Jenis</th>
+                        <th class="px-4 py-3.5">Makna & Deskripsi</th>
+                        <th class="px-4 py-3.5">Media</th>
+                        <th class="px-5 py-3.5 text-right">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-[#E4E4E7] text-sm">
+                    @forelse ($this->items as $item)
+                        @php
+                            $itemTypeLabel = match ($item->item_type) {
+                                'alphabet' => 'Huruf',
+                                'number' => 'Angka',
+                                'phrase' => 'Frasa',
+                                'expression' => 'Ekspresi',
+                                default => 'Kata',
+                            };
+                        @endphp
+                        <tr wire:key="library-item-{{ $item->id }}" class="transition-colors hover:bg-zinc-50/70">
+                            <td class="px-5 py-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex size-10 shrink-0 items-center justify-center rounded-xl border-2 border-[#F9B92F] bg-[#FFF8E6] text-sm font-extrabold text-[#1C1C1E]">
+                                        {{ mb_substr($item->title, 0, 2) }}
+                                    </div>
+                                    <div>
+                                        <span class="font-extrabold text-[#1C1C1E]">{{ $item->title }}</span>
+                                        <span class="mt-1 block text-[11px] font-semibold text-[#71717A]">
+                                            {{ $item->slug }} · {{ ucfirst($item->status) }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-4">
+                                <span class="rounded-lg bg-[#F4F4F5] px-2.5 py-0.5 text-xs font-bold text-[#52525B]">
+                                    {{ $item->category->name }}
+                                </span>
+                            </td>
+                            <td class="px-4 py-4 text-xs font-bold text-[#71717A]">{{ $itemTypeLabel }}</td>
+                            <td class="max-w-xs px-4 py-4 text-xs font-medium leading-relaxed text-[#52525B]">
+                                <p class="truncate">{{ $item->meaning ?: $item->description ?: '—' }}</p>
+                                @if (filled($item->movement_description))
+                                    <span class="mt-1 block truncate text-[10px] font-bold text-[#C98A06]">
+                                        {{ $item->movement_description }}
+                                    </span>
+                                @endif
+                            </td>
+                            <td class="px-4 py-4">
+                                <div class="flex flex-wrap gap-1">
+                                    @forelse ($item->media as $media)
+                                        <span
+                                            wire:key="media-badge-{{ $item->id }}-{{ $media->id }}"
+                                            class="inline-flex items-center rounded-full border border-[#86EFAC] bg-[#F0FDF4] px-2.5 py-0.5 text-[11px] font-extrabold text-[#15803D]"
+                                        >
+                                            {{ $media->media_type === 'image' ? 'Gambar' : 'Video' }}
+                                        </span>
+                                    @empty
+                                        <span class="text-xs font-semibold text-zinc-400">Belum ada</span>
+                                    @endforelse
+                                </div>
+                            </td>
+                            <td class="space-x-1.5 px-5 py-4 text-right">
+                                <button
+                                    type="button"
+                                    wire:click="edit({{ $item->id }})"
+                                    class="cursor-pointer rounded-xl border border-[#E4E4E7] px-2.5 py-1.5 text-xs font-extrabold text-[#52525B] hover:bg-zinc-100"
+                                    title="Edit kosakata"
+                                >
+                                    ✎
+                                </button>
+                                <button
+                                    type="button"
+                                    wire:click="delete({{ $item->id }})"
+                                    wire:confirm="Yakin ingin menghapus '{{ $item->title }}' dari kamus?"
+                                    class="cursor-pointer rounded-xl border border-[#FCA5A5] bg-[#FEF2F2] px-2.5 py-1.5 text-xs font-extrabold text-[#B91C1C] hover:bg-[#FEE2E2]"
+                                    title="Hapus kosakata"
+                                >
+                                    ✕
+                                </button>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="6" class="px-5 py-10 text-center text-xs font-medium text-[#71717A]">
+                                Belum ada kosakata yang sesuai dengan pencarian.
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="border-t border-[#E4E4E7] p-4">
+            {{ $this->items->links() }}
+        </div>
+    </div>
+
+    @if ($showModal)
+        <x-admin.kamus.entry-modal
+            :show="$showModal"
+            :item-id="$itemId"
+            :categories="$this->categories"
+            :selected-media="$this->selectedMedia"
+            :media-options="$this->mediaOptions"
+            :upload="$upload"
+            :upload-limit-kb="(int) config('services.media.max_upload_kb', 2048)"
+        />
+    @endif
 </div>
