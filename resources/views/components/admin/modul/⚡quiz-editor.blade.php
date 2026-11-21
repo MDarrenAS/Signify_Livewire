@@ -252,7 +252,7 @@ new class extends Component
                         <label class="flex items-center gap-2 pl-2.5 cursor-pointer select-none">
                             <input
                                 type="radio"
-                                wire:model="correctIndex"
+                                wire:model.live="correctIndex"
                                 value="{{ $optIdx }}"
                                 name="correct_answer_radio"
                                 class="text-[#22B05B] focus:ring-[#22B05B] size-4 cursor-pointer"
