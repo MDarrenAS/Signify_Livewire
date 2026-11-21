@@ -15,6 +15,15 @@ Route::middleware(['auth'])->group(function () {
         ->name('kamus.index');
         Route::livewire('/kamus-bisindo/{slug}', 'pages::kamus-bisindo.show')
         ->name('kamus.show');
+
+    Route::middleware('can:manage-kamus')
+        ->prefix('admin')
+        ->name('admin.')
+        ->group(function () {
+            Route::livewire('/kamus', 'pages::admin.kamus.index')
+                ->name('kamus.index');
+        });
+
     Route::livewire('/modul', 'pages::modul.index')
         ->name('modul.index');
         Route::livewire('/modul/{slug}', 'pages::modul.show')

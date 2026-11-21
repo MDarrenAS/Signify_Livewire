@@ -129,7 +129,7 @@ CREATE TABLE public.library_items (
 );
 CREATE TABLE public.library_media (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  library_item_id bigint NOT NULL,
+  library_item_id bigint,
   media_type text NOT NULL CHECK (media_type = ANY (ARRAY['image'::text, 'video'::text])),
   storage_path text NOT NULL UNIQUE,
   mime_type character varying,
@@ -144,9 +144,27 @@ CREATE TABLE public.library_media (
   duration_seconds integer CHECK (duration_seconds IS NULL OR duration_seconds >= 0),
   uploaded_by bigint,
   CONSTRAINT library_media_pkey PRIMARY KEY (id),
-  CONSTRAINT library_media_library_item_id_fkey FOREIGN KEY (library_item_id) REFERENCES public.library_items(id),
+  CONSTRAINT library_media_library_item_id_fkey FOREIGN KEY (library_item_id) REFERENCES public.library_items(id) ON DELETE SET NULL,
   CONSTRAINT library_media_uploaded_by_fkey FOREIGN KEY (uploaded_by) REFERENCES public.users(id)
 );
+CREATE TABLE public.library_item_media (
+  library_item_id bigint NOT NULL,
+  library_media_id bigint NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0,
+  is_primary boolean NOT NULL DEFAULT false,
+  caption character varying,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT library_item_media_pkey PRIMARY KEY (library_item_id, library_media_id),
+  CONSTRAINT library_item_media_library_item_id_fkey FOREIGN KEY (library_item_id) REFERENCES public.library_items(id) ON DELETE CASCADE,
+  CONSTRAINT library_item_media_library_media_id_fkey FOREIGN KEY (library_media_id) REFERENCES public.library_media(id) ON DELETE CASCADE
+);
+CREATE INDEX library_item_media_sort_idx ON public.library_item_media (library_item_id, sort_order);
+CREATE INDEX library_item_media_media_idx ON public.library_item_media (library_media_id);
+CREATE UNIQUE INDEX library_item_media_one_primary_per_item
+  ON public.library_item_media (library_item_id)
+  WHERE is_primary = true;
+ALTER TABLE public.library_item_media ENABLE ROW LEVEL SECURITY;
 CREATE TABLE public.modules (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   title character varying NOT NULL,
