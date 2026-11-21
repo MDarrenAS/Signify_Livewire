@@ -17,61 +17,95 @@ new #[Layout('layouts::lessons')] class extends Component
     public int $partOrder = 1;
     public int $totalParts = 1;
     public ?array $nextPart = null;
+    public ?array $nextModul = null;
 
-    public bool $isResultModalOpen = false;
+    public bool $isCompletedView = false;
     public bool $isPassed = true;
     public int $finalScore = 0;
+    public int $correctCount = 0;
 
     public function mount(string $modul, string $bagian): void
     {
         $this->modulSlug  = $modul;
         $this->bagianSlug = $bagian;
 
-        $foundModul = collect(MockCurriculum::getUnits())
+        $allModules = collect(MockCurriculum::getUnits())
             ->flatMap(fn (array $unit) => $unit['modules'] ?? [])
-            ->firstWhere('slug', $modul);
+            ->values();
 
-        abort_if(! $foundModul, 404);
+        $modulIndex = $allModules->search(fn (array $m) => ($m['slug'] ?? '') === $modul);
+        abort_if($modulIndex === false, 404);
 
-        $parts     = collect($foundModul['parts'] ?? [])->values();
-        $partIndex = $parts->search(fn (array $p) => ($p['slug'] ?? '') === $bagian);
+        $foundModul = $allModules->get($modulIndex);
+        $parts      = collect($foundModul['parts'] ?? [])->values();
+        $partIndex  = $parts->search(fn (array $p) => ($p['slug'] ?? '') === $bagian);
 
         abort_if($partIndex === false, 404);
 
         $foundPart = $parts->get($partIndex);
 
-        $this->modulData  = $foundModul;
-        $this->partData   = $foundPart;
-        $this->items      = array_values($foundPart['items'] ?? []);
-        $this->questions  = array_values($foundPart['questions'] ?? []);
+        $this->modulData = $foundModul;
+        $this->partData  = $foundPart;
+        $this->items     = array_values($foundPart['items'] ?? []);
+
+        $this->questions = collect($foundPart['questions'] ?? [])
+            ->map(function (array $q): array {
+                $options      = array_values($q['options'] ?? []);
+                $correctIndex = $q['correct_index'] ?? $q['correct'] ?? $q['answer'] ?? 0;
+
+                if (is_string($correctIndex) && ! is_numeric($correctIndex)) {
+                    $foundIdx = collect($options)->search(function ($opt) use ($correctIndex) {
+                        $label = is_array($opt) ? ($opt['label'] ?? $opt['text'] ?? '') : (string) $opt;
+                        return strcasecmp(trim($label), trim($correctIndex)) === 0;
+                    });
+                    $correctIndex = $foundIdx !== false ? $foundIdx : 0;
+                }
+
+                $q['options']       = $options;
+                $q['correct_index'] = (int) $correctIndex;
+
+                return $q;
+            })
+            ->values()
+            ->all();
+
         $this->partOrder  = $foundPart['order'] ?? ($partIndex + 1);
         $this->totalParts = $parts->count();
         $this->nextPart   = $parts->get($partIndex + 1);
+        $this->nextModul  = $allModules->get($modulIndex + 1);
     }
 
     public function complete(): void
     {
         $this->markSessionCompleted();
-        $this->isPassed          = true;
-        $this->isResultModalOpen = true;
+        $this->isPassed        = true;
+        $this->isCompletedView = true;
     }
 
-    public function completeQuiz(int $score): void
+    public function completeQuiz(int $score, int $correctCount = 0): void
     {
-        $passingScore     = (int) ($this->partData['passing_score'] ?? 80);
-        $this->finalScore = max(0, min(100, $score));
-        $this->isPassed   = $this->finalScore >= $passingScore;
+        $passingScore       = (int) ($this->partData['passing_score'] ?? 80);
+        $this->finalScore   = max(0, min(100, $score));
+        $this->correctCount = max(0, $correctCount);
+        $this->isPassed     = $this->finalScore >= $passingScore;
 
         if ($this->isPassed) {
             $this->markSessionCompleted($this->finalScore);
         }
 
-        $this->isResultModalOpen = true;
+        $this->isCompletedView = true;
+    }
+
+    public function retryLesson(): void
+    {
+        $this->isCompletedView = false;
     }
 
     public function retryQuiz(): void
     {
-        $this->isResultModalOpen = false;
+        $this->isCompletedView = false;
+        $this->finalScore      = 0;
+        $this->correctCount    = 0;
     }
 
     private function markSessionCompleted(?int $quizScore = null): void
@@ -102,202 +136,225 @@ new #[Layout('layouts::lessons')] class extends Component
 @php
     $isQuiz      = ($partData['type'] ?? 'lesson') === 'quiz';
     $modulUrl    = route('modul.index');
-    $nextPartUrl = $nextPart
-        ? route('modul.part', ['modul' => $modulSlug, 'bagian' => $nextPart['slug']])
-        : $modulUrl;
-
     $headerTitle = strtoupper(($partData['title'] ?? '') . (! empty($partData['subtitle']) ? ' (' . $partData['subtitle'] . ')' : ''));
     $alreadyDone = in_array($modulSlug . ':' . $bagianSlug, (array) session('completed_parts', []), true);
+
+    $nextModulFirstPart = $nextModul['parts'][0] ?? null;
+
+    if ($nextPart) {
+        $nextUrl   = route('modul.part', ['modul' => $modulSlug, 'bagian' => $nextPart['slug']]);
+        $nextLabel = 'Lanjut Bagian ' . ($nextPart['order'] ?? ($partOrder + 1)) . ' →';
+    } elseif ($nextModul && $nextModulFirstPart) {
+        $nextUrl   = route('modul.part', ['modul' => $nextModul['slug'], 'bagian' => $nextModulFirstPart['slug']]);
+        $nextLabel = 'Lanjut Modul Berikutnya →';
+    } else {
+        $nextUrl   = $modulUrl;
+        $nextLabel = 'Kembali ke Daftar Modul →';
+    }
 @endphp
 
-@if (! $isQuiz)
-    <div
-        x-data="{
-            items: @js($items),
-            xpReward: {{ (int) ($partData['xp_reward'] ?? 0) }},
-            activeIndex: 0,
-            completedIndices: {{ $alreadyDone ? json_encode(array_keys($items)) : '[]' }},
+<div class="min-h-screen flex flex-col bg-[#FAFAFA]">
+    @if ($isCompletedView)
+        <div wire:key="part-completed-{{ $modulSlug }}-{{ $bagianSlug }}" class="min-h-screen flex flex-col">
+            <x-lessons.header
+                :close-url="$modulUrl"
+                :part-order="$partOrder"
+                :total-parts="$totalParts"
+                :part-title="$headerTitle"
+                :xp-reward="$partData['xp_reward'] ?? 0"
+                :is-completed="$isPassed"
+            />
 
-            get currentItem() {
-                return this.items[this.activeIndex] || {};
-            },
-            get isLastItem() {
-                return this.activeIndex >= this.items.length - 1;
-            },
-            get progressPercent() {
-                return this.items.length
-                    ? Math.round(((this.activeIndex + 1) / this.items.length) * 100)
-                    : 100;
-            },
-            get nextButtonLabel() {
-                if (this.isLastItem) {
-                    return 'Selesai & Klaim +' + this.xpReward + ' XP ✓';
-                }
-                const nextTitle = this.items[this.activeIndex + 1]?.title ?? 'Berikutnya';
-                return 'Lanjut ' + nextTitle + ' →';
-            },
-            selectItem(idx) {
-                this.activeIndex = idx;
-            },
-            prevItem() {
-                if (this.activeIndex > 0) {
-                    this.activeIndex--;
-                }
-            },
-            nextOrComplete() {
-                if (!this.completedIndices.includes(this.activeIndex)) {
-                    this.completedIndices.push(this.activeIndex);
-                }
-
-                if (!this.isLastItem) {
-                    this.activeIndex++;
-                } else {
-                    $wire.complete();
-                }
-            }
-        }"
-        class="min-h-screen flex flex-col bg-[#FAFAFA]"
-    >
-        <x-lessons.header
-            :close-url="$modulUrl"
-            :part-order="$partOrder"
-            :total-parts="$totalParts"
-            :part-title="$headerTitle"
-            :xp-reward="$partData['xp_reward'] ?? 0"
-        />
-
-        <x-lessons.sign-tabs />
-
-        <main class="flex-1 max-w-[1200px] w-full mx-auto px-4 sm:px-8 py-5 sm:py-7">
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
-                <div class="lg:col-span-7">
-                    <x-lessons.video-player />
-                </div>
-
-                <div class="lg:col-span-5 space-y-4">
-                    <x-lessons.instruction-card :category="$partData['category'] ?? 'BISINDO'" />
-                    <x-lessons.mascot-tip />
-                </div>
-            </div>
-        </main>
-
-        <x-lessons.footer />
-    </div>
-@else
-    <div
-        x-data="{
-            questions: @js($questions),
-            quizIndex: 0,
-            selectedOption: null,
-            answered: false,
-            correctCount: 0,
-            quizVideoError: false,
-
-            get currentQuestion() {
-                return this.questions[this.quizIndex] || { options: [] };
-            },
-            get progressPercent() {
-                return this.questions.length
-                    ? Math.round(((this.quizIndex + (this.answered ? 1 : 0)) / this.questions.length) * 100)
-                    : 100;
-            },
-            get scorePercent() {
-                return this.questions.length
-                    ? Math.round((this.correctCount / this.questions.length) * 100)
-                    : 0;
-            },
-            selectOption(idx) {
-                if (!this.answered) this.selectedOption = idx;
-            },
-            checkAnswer() {
-                if (this.selectedOption === null || this.answered) return;
-                this.answered = true;
-                if (this.selectedOption === this.currentQuestion.correct_index) {
-                    this.correctCount++;
-                }
-            },
-            nextQuestion() {
-                if (this.quizIndex < this.questions.length - 1) {
-                    this.quizIndex++;
-                    this.selectedOption = null;
-                    this.answered = false;
-                    this.quizVideoError = false;
-                } else {
-                    $wire.completeQuiz(this.scorePercent);
-                }
-            },
-            resetQuiz() {
-                this.quizIndex = 0;
-                this.selectedOption = null;
-                this.answered = false;
-                this.correctCount = 0;
-                this.quizVideoError = false;
-            }
-        }"
-        @quiz-retry.window="resetQuiz()"
-        class="min-h-screen flex flex-col bg-[#FAFAFA]"
-    >
-        <x-lessons.header
-            :close-url="$modulUrl"
-            :part-order="$partOrder"
-            :total-parts="$totalParts"
-            :part-title="$headerTitle"
-            :xp-reward="$partData['xp_reward'] ?? 0"
-        />
-
-        <x-quiz.view />
-    </div>
-@endif
-
-{{-- MODAL HASIL BAGIAN / KUIS --}}
-@if ($isResultModalOpen)
-    <div class="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-        <div class="bg-white border-2 border-b-4 border-[#E4E4E7] rounded-3xl max-w-md w-full p-6 sm:p-8 text-center space-y-5 shadow-xl">
-            <div class="w-16 h-16 mx-auto rounded-2xl {{ $isPassed ? 'bg-[#FFF8E6] border-[#F9B92F]' : 'bg-[#FEF2F2] border-[#EF4444]' }} border-2 border-b-4 flex items-center justify-center text-3xl">
-                {{ $isPassed ? '🎉' : '💪' }}
-            </div>
-
-            <div class="space-y-1.5">
-                <h2 class="text-2xl font-extrabold text-[#1C1C1E]">
-                    {{ $isPassed ? 'Bagian Selesai!' : 'Belum Lulus Kuis' }}
-                </h2>
-
-                @if ($isPassed)
-                    <p class="text-sm text-[#52525B] font-medium">
-                        Kamu menyelesaikan <strong class="text-[#1C1C1E]">{{ $partData['title'] ?? '' }}</strong>
-                        @if ($isQuiz)
-                            dengan skor <strong class="text-[#15803D]">{{ $finalScore }}%</strong>
-                        @endif
-                        dan meraih <strong class="text-[#C98A06]">+{{ $partData['xp_reward'] ?? 0 }} XP</strong>.
-                    </p>
-                @else
-                    <p class="text-sm text-[#52525B] font-medium">
-                        Skor kamu <strong class="text-[#B91C1C]">{{ $finalScore }}%</strong>
-                        (minimal lulus <strong class="text-[#1C1C1E]">{{ $partData['passing_score'] ?? 80 }}%</strong>). Coba ulangi lagi!
-                    </p>
-                @endif
-            </div>
-
-            <div class="flex flex-col sm:flex-row gap-3 pt-2">
-                <x-ui.button variant="secondary" :href="$modulUrl" wire:navigate class="flex-1">
-                    Daftar Modul
-                </x-ui.button>
-
-                @if (! $isPassed)
-                    <x-ui.button
-                        variant="primary"
-                        wire:click="retryQuiz"
-                        x-on:click="$dispatch('quiz-retry')"
-                        class="flex-1"
-                    >
-                        Coba Lagi ↻
-                    </x-ui.button>
-                @elseif ($nextPart)
-                    <x-ui.button variant="primary" :href="$nextPartUrl" wire:navigate class="flex-1">
-                        Bagian {{ $nextPart['order'] ?? ($partOrder + 1) }} →
-                    </x-ui.button>
-                @endif
-            </div>
+            <x-lessons.completed-view
+                :is-quiz="$isQuiz"
+                :is-passed="$isPassed"
+                :part-order="$partOrder"
+                :part-title="$partData['title'] ?? ''"
+                :xp-reward="(int) ($partData['xp_reward'] ?? 0)"
+                :items-count="count($items)"
+                :final-score="$finalScore"
+                :passing-score="(int) ($partData['passing_score'] ?? 80)"
+                :correct-count="$correctCount"
+                :total-questions="count($questions)"
+                :modul-url="$modulUrl"
+                :next-url="$nextUrl"
+                :next-label="$nextLabel"
+            />
         </div>
-    </div>
-@endif
+    @elseif (! $isQuiz)
+        <div
+            wire:key="part-lesson-{{ $modulSlug }}-{{ $bagianSlug }}"
+            x-data="{
+                items: @js($items),
+                xpReward: {{ (int) ($partData['xp_reward'] ?? 0) }},
+                activeIndex: 0,
+                completedIndices: {{ $alreadyDone ? json_encode(array_keys($items)) : '[]' }},
+
+                get currentItem() {
+                    return this.items[this.activeIndex] || {};
+                },
+                get isLastItem() {
+                    return this.activeIndex >= this.items.length - 1;
+                },
+                get progressPercent() {
+                    return this.items.length
+                        ? Math.round(((this.activeIndex + 1) / this.items.length) * 100)
+                        : 100;
+                },
+                get nextButtonLabel() {
+                    if (this.isLastItem) {
+                        return 'Selesai & Klaim +' + this.xpReward + ' XP ✓';
+                    }
+                    const nextTitle = this.items[this.activeIndex + 1]?.title ?? 'Berikutnya';
+                    return 'Lanjut ' + nextTitle + ' →';
+                },
+                selectItem(idx) {
+                    this.activeIndex = idx;
+                },
+                prevItem() {
+                    if (this.activeIndex > 0) {
+                        this.activeIndex--;
+                    }
+                },
+                nextOrComplete() {
+                    if (!this.completedIndices.includes(this.activeIndex)) {
+                        this.completedIndices.push(this.activeIndex);
+                    }
+
+                    if (!this.isLastItem) {
+                        this.activeIndex++;
+                    } else {
+                        this.$wire.complete();
+                    }
+                }
+            }"
+            class="min-h-screen flex flex-col"
+        >
+            <x-lessons.header
+                :close-url="$modulUrl"
+                :part-order="$partOrder"
+                :total-parts="$totalParts"
+                :part-title="$headerTitle"
+                :xp-reward="$partData['xp_reward'] ?? 0"
+            />
+
+            <x-lessons.sign-tabs />
+
+            <main class="flex-1 max-w-[1200px] w-full mx-auto px-4 sm:px-8 py-5 sm:py-7">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+                    <div class="lg:col-span-7">
+                        <x-lessons.video-player />
+                    </div>
+
+                    <div class="lg:col-span-5 space-y-4">
+                        <x-lessons.instruction-card :category="$partData['category'] ?? 'BISINDO'" />
+                        <x-lessons.mascot-tip />
+                    </div>
+                </div>
+            </main>
+
+            <x-lessons.footer />
+        </div>
+    @else
+        <div
+            wire:key="part-quiz-{{ $modulSlug }}-{{ $bagianSlug }}"
+            x-data="{
+                questions: @js($questions),
+                quizIndex: 0,
+                selectedOptions: Array.from({ length: {{ count($questions) }} }, () => null),
+                answeredStates: Array.from({ length: {{ count($questions) }} }, () => false),
+                quizVideoError: false,
+                quizIsPlaying: false,
+                quizSpeed: 1.0,
+                quizCurrentTime: 0,
+                quizDuration: 4,
+
+                init() {
+                    this.$watch('quizIndex', () => {
+                        this.quizVideoError = false;
+                        this.quizIsPlaying = false;
+                        this.quizCurrentTime = 0;
+                        this.$nextTick(() => {
+                            if (this.$refs.quizPlayer) {
+                                this.$refs.quizPlayer.load();
+                                this.$refs.quizPlayer.playbackRate = this.quizSpeed;
+                            }
+                        });
+                    });
+                },
+                get currentQuestion() {
+                    return this.questions[this.quizIndex] || { options: [], correct_index: 0 };
+                },
+                get currentSelected() {
+                    return this.selectedOptions[this.quizIndex] ?? null;
+                },
+                get isCurrentAnswered() {
+                    return Boolean(this.answeredStates[this.quizIndex]);
+                },
+                get correctCount() {
+                    return this.questions.reduce((total, q, idx) => {
+                        return total + (this.answeredStates[idx] && this.selectedOptions[idx] === Number(q.correct_index) ? 1 : 0);
+                    }, 0);
+                },
+                get progressPercent() {
+                    const answeredTotal = this.answeredStates.filter(Boolean).length;
+                    return this.questions.length
+                        ? Math.round((answeredTotal / this.questions.length) * 100)
+                        : 100;
+                },
+                get scorePercent() {
+                    return this.questions.length
+                        ? Math.round((this.correctCount / this.questions.length) * 100)
+                        : 0;
+                },
+                selectOption(idx) {
+                    if (this.isCurrentAnswered) return;
+                    this.selectedOptions.splice(this.quizIndex, 1, idx);
+                },
+                checkAnswer() {
+                    if (this.currentSelected === null || this.isCurrentAnswered) return;
+                    this.answeredStates.splice(this.quizIndex, 1, true);
+                },
+                prevQuestion() {
+                    if (this.quizIndex > 0) {
+                        this.quizIndex--;
+                    }
+                },
+                nextQuestion() {
+                    if (this.quizIndex < this.questions.length - 1) {
+                        this.quizIndex++;
+                    } else {
+                        this.$wire.completeQuiz(this.scorePercent, this.correctCount);
+                    }
+                },
+                toggleQuizPlay() {
+                    if (this.quizVideoError || !this.$refs.quizPlayer) return;
+                    if (this.$refs.quizPlayer.paused) {
+                        this.$refs.quizPlayer.play();
+                        this.quizIsPlaying = true;
+                    } else {
+                        this.$refs.quizPlayer.pause();
+                        this.quizIsPlaying = false;
+                    }
+                },
+                setQuizSpeed(val) {
+                    this.quizSpeed = val;
+                    if (this.$refs.quizPlayer) {
+                        this.$refs.quizPlayer.playbackRate = val;
+                    }
+                }
+            }"
+            class="min-h-screen flex flex-col"
+        >
+            <x-lessons.header
+                :close-url="$modulUrl"
+                :part-order="$partOrder"
+                :total-parts="$totalParts"
+                :part-title="$headerTitle"
+                :xp-reward="$partData['xp_reward'] ?? 0"
+            />
+
+            <x-quiz.view />
+        </div>
+    @endif
+</div>

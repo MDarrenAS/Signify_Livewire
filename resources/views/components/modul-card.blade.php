@@ -15,10 +15,10 @@
     $hasCurrentPart = collect($rawParts)->contains(fn ($p) => ($p['status'] ?? '') === 'current');
 
     $status = match (true) {
-        ($modul['status'] ?? null) === 'locked'           => 'locked',
-        count($rawParts) > 0 && $completedParts >= $totalParts => 'completed',
+        ($modul['status'] ?? null) === 'locked'                         => 'locked',
+        count($rawParts) > 0 && $completedParts >= $totalParts          => 'completed',
         count($rawParts) > 0 && ($completedParts > 0 || $hasCurrentPart) => 'in_progress',
-        default                                           => $modul['status'] ?? 'not_started',
+        default                                                         => $modul['status'] ?? 'not_started',
     };
 
     $defaultOpen = (bool) ($modul['is_expanded'] ?? ($status === 'in_progress'));
@@ -45,9 +45,10 @@
         return $part;
     })->all();
 
-    $modulUrl    = Route::has('modul.show') ? route('modul.show', $modul['slug'] ?? '') : '#';
-    $continueUrl = ($status === 'in_progress' && $activePartSlug && Route::has('modul.part'))
-        ? route('modul.part', ['modul' => $modul['slug'] ?? '', 'part' => $activePartSlug])
+    $modulSlug   = $modul['slug'] ?? '';
+    $modulUrl    = ($modulSlug !== '' && Route::has('modul.show')) ? route('modul.show', $modulSlug) : '#';
+    $continueUrl = ($status === 'in_progress' && $modulSlug !== '' && $activePartSlug && Route::has('modul.part'))
+        ? route('modul.part', ['modul' => $modulSlug, 'bagian' => $activePartSlug])
         : $modulUrl;
 
     $cardClasses = match ($status) {
