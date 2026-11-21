@@ -18,8 +18,8 @@ Route::middleware(['auth'])->group(function () {
         ->name('kamus.show');
     Route::livewire('/modul', 'pages::modul.index')
         ->name('modul.index');
-        Route::livewire('/modul/{slug}', 'pages::modul.show')
-        ->name('modul.show');
+        Route::livewire('/modul/{modul}', 'pages::modul.show')->name('modul.show');
+        Route::livewire('/modul/{modul}/{bagian}', 'pages::modul.part')->name('modul.part');
 });
 
 require __DIR__.'/settings.php';

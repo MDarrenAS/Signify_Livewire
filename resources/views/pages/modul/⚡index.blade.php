@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\MockCurriculum;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -11,63 +12,67 @@ new #[Title('Modul Belajar')] class extends Component
 
         return [
             'streak' => $user->streak ?? 0,
-            'xp'     => $user->xp ?? 420,
-            // TODO (Backend): Ganti $this->mockUnits() dengan query Eloquent / ModulService
-            'units'  => $this->mockUnits(),
+            'xp'     => ($user->xp ?? 420) + (int) session('session_xp', 0),
+            // TODO (Backend): Ganti $this->getUnitsWithSessionProgress() dengan query Eloquent / ModulService
+            'units'  => $this->getUnitsWithSessionProgress(),
         ];
     }
 
-    private function mockUnits(): array
+    private function getUnitsWithSessionProgress(): array
     {
-        return [
-            [
-                'id'          => 1,
-                'badge'       => 'UNIT 1 • TINGKAT DASAR',
-                'title'       => 'Pondasi Komunikasi BISINDO',
-                'description' => 'Kuasai abjad visual, angka dasar, dan sapaan penting untuk memulai percakapan.',
-                'is_locked'   => false,
-                'modules'     => [
-                    [
-                        'slug'           => 'abjad-dan-ejaan',
-                        'title'          => 'Abjad & Ejaan',
-                        'description'    => 'Kuasai 26 isyarat huruf dasar BISINDO (6 Bagian).',
-                        'xp_reward'      => 40,
-                        'visual_content' => 'A-Z',
-                        'is_expanded'    => false,
-                        'parts'          => [
-                            ['slug' => 'huruf-vokal', 'title' => 'Bagian 1 • Huruf Vokal (A, I, U, E, O)', 'badge_text' => '5 Isyarat', 'type' => 'lesson', 'status' => 'completed'],
-                            ['slug' => 'konsonan-awal', 'title' => 'Bagian 2 • Konsonan Awal (B, C, D, F, G)', 'badge_text' => '5 Isyarat', 'type' => 'lesson', 'status' => 'completed'],
-                            ['slug' => 'konsonan-tengah-1', 'title' => 'Bagian 3 • Konsonan Tengah I (H, J, K, L, M)', 'badge_text' => '5 Isyarat', 'type' => 'lesson', 'status' => 'completed'],
-                            ['slug' => 'konsonan-tengah-2', 'title' => 'Bagian 4 • Konsonan Tengah II (N, P, Q, R, S)', 'badge_text' => '5 Isyarat', 'type' => 'lesson', 'status' => 'completed'],
-                            ['slug' => 'konsonan-akhir', 'title' => 'Bagian 5 • Konsonan Akhir (T, V, W, X, Y, Z)', 'badge_text' => '6 Isyarat', 'type' => 'lesson', 'status' => 'completed'],
-                            ['slug' => 'kuis-evaluasi-abjad', 'title' => 'Bagian 6 • Kuis Evaluasi Abjad (8 Soal)', 'badge_text' => 'Skor 100 • Sempurna', 'type' => 'quiz', 'status' => 'completed'],
-                        ],
-                    ],
-                    [
-                        'slug'           => 'angka-dan-hitungan',
-                        'title'          => 'Angka & Hitungan',
-                        'description'    => 'Belajar angka satuan hingga ribuan dalam isyarat BISINDO.',
-                        'tag'            => 'SEDANG AKTIF',
-                        'visual_content' => '1 2 3',
-                        'is_expanded'    => true,
-                        'parts'          => [
-                            ['slug' => 'angka-satuan', 'title' => 'Bagian 1 • Angka Satuan (0–9)', 'badge_text' => '10 Isyarat', 'type' => 'lesson', 'status' => 'completed'],
-                            ['slug' => 'angka-belasan-puluhan', 'title' => 'Bagian 2 • Angka Belasan & Puluhan', 'badge_text' => '8 Isyarat', 'type' => 'lesson', 'status' => 'completed'],
-                            ['slug' => 'angka-ratusan-ribuan', 'title' => 'Bagian 3 • Angka Ratusan & Ribuan', 'badge_text' => '6 Isyarat', 'type' => 'lesson', 'status' => 'not_started'],
-                            ['slug' => 'kuis-angka', 'title' => 'Bagian 4 • Kuis Hitungan Harian (6 Soal)', 'badge_text' => 'Kuis', 'type' => 'quiz', 'status' => 'not_started'],
-                        ],
-                    ],
-                    [
-                        'slug'        => 'kata-ganti-sapaan',
-                        'title'       => 'Kata Ganti & Sapaan Dasar',
-                        'description' => 'Terkunci • Selesaikan Modul Angka terlebih dahulu',
-                        'status'      => 'locked',
-                        'total_parts' => 3,
-                        'parts'       => [],
-                    ],
-                ],
-            ],
-        ];
+        $completedKeys = (array) session('completed_parts', []);
+        $quizScores    = (array) session('quiz_scores', []);
+        $prevModulDone = true;
+
+        return collect(MockCurriculum::getUnits())->map(function (array $unit) use ($completedKeys, $quizScores, &$prevModulDone) {
+            $modules = collect($unit['modules'] ?? [])->map(function (array $modul) use ($completedKeys, $quizScores, &$prevModulDone) {
+                $rawParts = collect($modul['parts'] ?? []);
+
+                $parts = $rawParts->map(function (array $part) use ($modul, $completedKeys, $quizScores) {
+                    $key    = $modul['slug'] . ':' . $part['slug'];
+                    $isDone = in_array($key, $completedKeys, true) || ($part['status'] ?? '') === 'completed';
+
+                    if ($isDone) {
+                        $part['status'] = 'completed';
+
+                        if (($part['type'] ?? 'lesson') === 'quiz' && isset($quizScores[$key])) {
+                            $score = (int) $quizScores[$key];
+                            $part['badge_text'] = $score >= 100 ? 'Skor 100 • Sempurna' : "Skor {$score}";
+                        }
+                    }
+
+                    return $part;
+                });
+
+                $wasLocked    = ($modul['status'] ?? '') === 'locked';
+                $isLocked     = $wasLocked && ! $prevModulDone;
+                $totalParts   = $parts->count();
+                $doneCount    = $parts->where('status', 'completed')->count();
+                $isModulDone  = $totalParts > 0 && $doneCount === $totalParts;
+                $isInProgress = ! $isLocked && $doneCount > 0 && ! $isModulDone;
+
+                $prevModulDone = ! $isLocked && $isModulDone;
+
+                return array_merge($modul, [
+                    'status'      => $isLocked ? 'locked' : ($isModulDone ? 'completed' : null),
+                    'tag'         => (! $isLocked && ! $isModulDone) ? ($modul['tag'] ?? 'SEDANG AKTIF') : ($modul['tag'] ?? null),
+                    'description' => $isLocked
+                        ? ($modul['description'] ?? 'Terkunci • Selesaikan modul sebelumnya terlebih dahulu')
+                        : (str_starts_with($modul['description'] ?? '', 'Terkunci')
+                            ? 'Kuasai materi ' . $modul['title'] . ' dalam isyarat BISINDO.'
+                            : ($modul['description'] ?? '')),
+                    'xp_reward'   => $modul['xp_reward'] ?? $parts->sum('xp_reward'),
+                    'total_parts' => $modul['total_parts'] ?? $totalParts,
+                    'is_expanded' => $isInProgress || ($wasLocked && ! $isLocked) || (! $isLocked && ! $isModulDone && ($modul['is_expanded'] ?? false)),
+                    'parts'       => $isLocked ? [] : $parts->all(),
+                ]);
+            });
+
+            return array_merge($unit, [
+                'is_locked' => $modules->isNotEmpty() && $modules->every(fn (array $m) => ($m['status'] ?? '') === 'locked'),
+                'modules'   => $modules->all(),
+            ]);
+        })->all();
     }
 };
 ?>

@@ -11,7 +11,7 @@
     $isCompleted = $partStatus === 'completed';
 
     $partUrl = match (true) {
-        Route::has('modul.part') => route('modul.part', ['modul' => $modulSlug, 'part' => $part['slug'] ?? '']),
+        Route::has('modul.part') => route('modul.part', ['modul' => $modulSlug, 'bagian' => $part['slug'] ?? '']),
         Route::has('modul.show') => route('modul.show', $modulSlug),
         default                  => '#',
     };
