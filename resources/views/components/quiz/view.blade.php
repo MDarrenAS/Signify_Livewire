@@ -164,37 +164,31 @@
 {{-- FOOTER NAVIGASI KUIS --}}
 <footer class="sticky bottom-0 z-20 bg-white border-t-2 border-[#E4E4E7]">
     <div class="max-w-[1200px] mx-auto px-4 sm:px-8 py-3.5 sm:py-4 flex items-center justify-between gap-3">
-        <button
-            type="button"
+        <x-ui.button
+            variant="secondary"
             x-on:click="prevQuestion()"
-            :disabled="quizIndex === 0"
-            :class="quizIndex === 0
-                ? 'opacity-40 cursor-not-allowed bg-zinc-100 border-[#E4E4E7] text-[#71717A]'
-                : 'bg-white border-[#E4E4E7] border-b-[#D4D4D8] text-[#1C1C1E] hover:bg-zinc-50 cursor-pointer active:translate-y-[2px] active:border-b-2'"
-            class="border-2 border-b-4 rounded-2xl px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-extrabold transition-all"
+            x-bind:disabled="quizIndex === 0"
         >
             ← Sebelumnya
-        </button>
+        </x-ui.button>
 
-        <button
-            type="button"
+        <x-ui.button
+            variant="primary"
             x-show="!isCurrentAnswered"
             x-on:click="checkAnswer()"
-            :disabled="currentSelected === null"
-            :class="currentSelected === null
-                ? 'opacity-40 cursor-not-allowed bg-zinc-200 border-zinc-300 text-zinc-500'
-                : 'bg-[#F9B92F] hover:bg-[#fabf45] border-[#C98A06] text-[#1C1C1E] cursor-pointer active:translate-y-[2px] active:border-b-2'"
-            class="border-2 border-b-4 rounded-2xl px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-extrabold transition-all ml-auto"
+            x-bind:disabled="currentSelected === null"
+            class="ml-auto"
         >
             Periksa Jawaban
-        </button>
+        </x-ui.button>
 
-        <button
-            type="button"
+        <x-ui.button
+            variant="success"
             x-show="isCurrentAnswered"
             x-on:click="nextQuestion()"
-            class="bg-[#22B05B] hover:bg-[#1ea052] border-2 border-[#15803D] border-b-4 text-white rounded-2xl px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-extrabold transition-all cursor-pointer active:translate-y-[2px] active:border-b-2 ml-auto"
             x-text="quizIndex < questions.length - 1 ? 'Pertanyaan Berikutnya →' : 'Selesaikan Kuis ✓'"
-        ></button>
+            class="ml-auto"
+        >
+        </x-ui.button>
     </div>
 </footer>

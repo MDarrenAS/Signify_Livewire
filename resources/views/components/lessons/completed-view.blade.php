@@ -109,41 +109,43 @@
         {{-- Tombol Aksi Bawah --}}
         <div class="flex flex-col sm:flex-row items-center gap-3">
             @if ($isQuiz)
-                <button
-                    type="button"
+                <x-ui.button
+                    variant="secondary"
                     wire:click="retryQuiz"
-                    class="w-full sm:flex-1 bg-white hover:bg-zinc-50 active:translate-y-0.5 active:border-b-2 border-2 border-[#E4E4E7] border-b-4 border-b-[#D4D4D8] rounded-2xl px-4 py-3 text-xs sm:text-sm font-extrabold text-[#1C1C1E] transition-all cursor-pointer inline-flex items-center justify-center gap-1.5"
+                    class="w-full sm:flex-1"
                 >
                     <span>↺</span>
                     <span>Ulangi Kuis</span>
-                </button>
+                </x-ui.button>
             @else
-                <button
-                    type="button"
+                <x-ui.button
+                    variant="secondary"
                     wire:click="retryLesson"
-                    class="w-full sm:flex-1 bg-white hover:bg-zinc-50 active:translate-y-0.5 active:border-b-2 border-2 border-[#E4E4E7] border-b-4 border-b-[#D4D4D8] rounded-2xl px-4 py-3 text-xs sm:text-sm font-extrabold text-[#1C1C1E] transition-all cursor-pointer inline-flex items-center justify-center gap-1.5"
+                    class="w-full sm:flex-1"
                 >
                     <span>↺</span>
                     <span>Ulangi Materi</span>
-                </button>
+                </x-ui.button>
             @endif
 
             @if ($isPassed)
-                <a
+                <x-ui.button
+                    variant="primary"
                     href="{{ $nextUrl }}"
                     wire:navigate
-                    class="w-full sm:flex-1 bg-[#F9B92F] hover:bg-[#fabf45] active:translate-y-0.5 active:border-b-2 border-2 border-[#C98A06] border-b-4 border-b-[#C98A06] rounded-2xl px-4 py-3 text-xs sm:text-sm font-extrabold text-[#1C1C1E] transition-all inline-flex items-center justify-center gap-1.5"
+                    class="w-full sm:flex-1"
                 >
                     <span>{{ $nextLabel }}</span>
-                </a>
+                </x-ui.button>
             @else
-                <a
+                <x-ui.button
+                    variant="secondary"
                     href="{{ $modulUrl }}"
                     wire:navigate
-                    class="w-full sm:flex-1 bg-white hover:bg-zinc-50 active:translate-y-0.5 active:border-b-2 border-2 border-[#E4E4E7] border-b-4 border-b-[#D4D4D8] rounded-2xl px-4 py-3 text-xs sm:text-sm font-extrabold text-[#1C1C1E] transition-all inline-flex items-center justify-center gap-1.5"
+                    class="w-full sm:flex-1"
                 >
                     <span>Daftar Modul</span>
-                </a>
+                </x-ui.button>
             @endif
         </div>
     </div>

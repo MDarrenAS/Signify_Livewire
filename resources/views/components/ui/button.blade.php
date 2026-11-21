@@ -1,5 +1,5 @@
 @props([
-    'variant' => 'primary', // primary | secondary
+    'variant' => 'primary', // primary | secondary | success | ghost
     'type'    => 'button',
     'href'    => null,
     'size'    => 'md',      // sm | md | lg
@@ -11,6 +11,8 @@
     $variants = [
         'primary'   => 'bg-[#F9B92F] hover:bg-[#fabf45] border-[#C98A06] text-[#1C1C1E]',
         'secondary' => 'bg-white hover:bg-zinc-50 border-[#E4E4E7] text-[#52525B]',
+        'success'   => 'bg-[#22B05B] hover:bg-[#1ea052] border-[#15803D] text-white',
+        'ghost'     => 'bg-transparent hover:bg-zinc-100 border-transparent text-[#52525B]',
     ];
 
     $sizes = [

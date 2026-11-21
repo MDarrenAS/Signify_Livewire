@@ -184,50 +184,11 @@ new #[Layout('layouts::lessons')] class extends Component
     @elseif (! $isQuiz)
         <div
             wire:key="part-lesson-{{ $modulSlug }}-{{ $bagianSlug }}"
-            x-data="{
+            x-data="lessonPlayer({
                 items: @js($items),
                 xpReward: {{ (int) ($partData['xp_reward'] ?? 0) }},
-                activeIndex: 0,
-                completedIndices: {{ $alreadyDone ? json_encode(array_keys($items)) : '[]' }},
-
-                get currentItem() {
-                    return this.items[this.activeIndex] || {};
-                },
-                get isLastItem() {
-                    return this.activeIndex >= this.items.length - 1;
-                },
-                get progressPercent() {
-                    return this.items.length
-                        ? Math.round(((this.activeIndex + 1) / this.items.length) * 100)
-                        : 100;
-                },
-                get nextButtonLabel() {
-                    if (this.isLastItem) {
-                        return 'Selesai & Klaim +' + this.xpReward + ' XP ✓';
-                    }
-                    const nextTitle = this.items[this.activeIndex + 1]?.title ?? 'Berikutnya';
-                    return 'Lanjut ' + nextTitle + ' →';
-                },
-                selectItem(idx) {
-                    this.activeIndex = idx;
-                },
-                prevItem() {
-                    if (this.activeIndex > 0) {
-                        this.activeIndex--;
-                    }
-                },
-                nextOrComplete() {
-                    if (!this.completedIndices.includes(this.activeIndex)) {
-                        this.completedIndices.push(this.activeIndex);
-                    }
-
-                    if (!this.isLastItem) {
-                        this.activeIndex++;
-                    } else {
-                        this.$wire.complete();
-                    }
-                }
-            }"
+                completedIndices: {{ $alreadyDone ? json_encode(array_keys($items)) : '[]' }}
+            })"
             class="min-h-screen flex flex-col"
         >
             <x-lessons.header
@@ -258,92 +219,7 @@ new #[Layout('layouts::lessons')] class extends Component
     @else
         <div
             wire:key="part-quiz-{{ $modulSlug }}-{{ $bagianSlug }}"
-            x-data="{
-                questions: @js($questions),
-                quizIndex: 0,
-                selectedOptions: Array.from({ length: {{ count($questions) }} }, () => null),
-                answeredStates: Array.from({ length: {{ count($questions) }} }, () => false),
-                quizVideoError: false,
-                quizIsPlaying: false,
-                quizSpeed: 1.0,
-                quizCurrentTime: 0,
-                quizDuration: 4,
-
-                init() {
-                    this.$watch('quizIndex', () => {
-                        this.quizVideoError = false;
-                        this.quizIsPlaying = false;
-                        this.quizCurrentTime = 0;
-                        this.$nextTick(() => {
-                            if (this.$refs.quizPlayer) {
-                                this.$refs.quizPlayer.load();
-                                this.$refs.quizPlayer.playbackRate = this.quizSpeed;
-                            }
-                        });
-                    });
-                },
-                get currentQuestion() {
-                    return this.questions[this.quizIndex] || { options: [], correct_index: 0 };
-                },
-                get currentSelected() {
-                    return this.selectedOptions[this.quizIndex] ?? null;
-                },
-                get isCurrentAnswered() {
-                    return Boolean(this.answeredStates[this.quizIndex]);
-                },
-                get correctCount() {
-                    return this.questions.reduce((total, q, idx) => {
-                        return total + (this.answeredStates[idx] && this.selectedOptions[idx] === Number(q.correct_index) ? 1 : 0);
-                    }, 0);
-                },
-                get progressPercent() {
-                    const answeredTotal = this.answeredStates.filter(Boolean).length;
-                    return this.questions.length
-                        ? Math.round((answeredTotal / this.questions.length) * 100)
-                        : 100;
-                },
-                get scorePercent() {
-                    return this.questions.length
-                        ? Math.round((this.correctCount / this.questions.length) * 100)
-                        : 0;
-                },
-                selectOption(idx) {
-                    if (this.isCurrentAnswered) return;
-                    this.selectedOptions.splice(this.quizIndex, 1, idx);
-                },
-                checkAnswer() {
-                    if (this.currentSelected === null || this.isCurrentAnswered) return;
-                    this.answeredStates.splice(this.quizIndex, 1, true);
-                },
-                prevQuestion() {
-                    if (this.quizIndex > 0) {
-                        this.quizIndex--;
-                    }
-                },
-                nextQuestion() {
-                    if (this.quizIndex < this.questions.length - 1) {
-                        this.quizIndex++;
-                    } else {
-                        this.$wire.completeQuiz(this.scorePercent, this.correctCount);
-                    }
-                },
-                toggleQuizPlay() {
-                    if (this.quizVideoError || !this.$refs.quizPlayer) return;
-                    if (this.$refs.quizPlayer.paused) {
-                        this.$refs.quizPlayer.play();
-                        this.quizIsPlaying = true;
-                    } else {
-                        this.$refs.quizPlayer.pause();
-                        this.quizIsPlaying = false;
-                    }
-                },
-                setQuizSpeed(val) {
-                    this.quizSpeed = val;
-                    if (this.$refs.quizPlayer) {
-                        this.$refs.quizPlayer.playbackRate = val;
-                    }
-                }
-            }"
+            x-data="quizPlayer({ questions: @js($questions) })"
             class="min-h-screen flex flex-col"
         >
             <x-lessons.header
