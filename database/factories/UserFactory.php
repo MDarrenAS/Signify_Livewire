@@ -46,6 +46,14 @@ class UserFactory extends Factory
         ]);
     }
 
+    public function admin(): static
+    {
+        return $this->afterMaking(fn (User $user) => $user->forceFill([
+            'role' => 'admin',
+            'is_active' => true,
+        ]));
+    }
+
     /**
      * Indicate that the model has two-factor authentication configured.
      */

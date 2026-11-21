@@ -28,6 +28,11 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'media' => [
+        'max_upload_kb' => (int) env('MEDIA_MAX_UPLOAD_KB', 2048),
+        'signed_url_minutes' => env('MEDIA_SIGNED_URL_MINUTES', 15),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
