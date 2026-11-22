@@ -206,9 +206,9 @@
             <x-admin.file-uploader
                 model="upload"
                 :allow-url="false"
-                accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
+                accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
                 label="Media peragaan Kamus"
-                :hint="'JPG, PNG, WebP, MP4, WebM, atau MOV (maks. '.number_format($uploadLimitKb / 1024, 1).' MB)'"
+                :hint="'PNG, JPG, WebP, GIF, MP4, WebM, atau MOV (maks. '.number_format($uploadLimitKb / 1024, 1).' MB)'"
             >
                 @if ($upload)
                     @if (str_starts_with((string) $upload->getMimeType(), 'image/'))

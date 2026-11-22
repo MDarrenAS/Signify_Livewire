@@ -260,14 +260,14 @@ new #[Layout('layouts::admin')] #[Title('Kelola Kamus — Admin Signify')] class
             'upload' => [
                 'nullable',
                 'file',
-                'mimes:jpg,jpeg,png,webp,mp4,webm,mov',
-                'extensions:jpg,jpeg,png,webp,mp4,webm,mov',
-                'max:'.(int) config('services.media.max_upload_kb', 12288),
+                'mimes:jpg,jpeg,png,webp,gif,mp4,webm,mov',
+                'extensions:jpg,jpeg,png,webp,gif,mp4,webm,mov',
+                'max:'.(int) config('services.media.max_upload_kb', 51200),
             ],
             'uploadAltText' => ['nullable', 'string', 'max:255'],
             'uploadCaption' => ['nullable', 'string', 'max:255'],
         ], [
-            'upload.mimes' => 'Unggah gambar JPG, PNG, atau WebP, maupun video MP4, WebM, atau MOV.',
+            'upload.mimes' => 'Unggah gambar PNG, JPG, WebP, atau GIF, maupun video MP4, WebM, atau MOV.',
             'upload.extensions' => 'Ekstensi file tidak sesuai dengan jenis medianya.',
             'upload.max' => 'Ukuran file melebihi batas yang diizinkan.',
         ]);
@@ -400,7 +400,7 @@ new #[Layout('layouts::admin')] #[Title('Kelola Kamus — Admin Signify')] class
     private function storeUpload(LibraryItem $item): bool
     {
         $mimeType = $this->upload->getMimeType();
-        $extension = $this->upload->extension();
+        $extension = strtolower((string) ($this->upload->getClientOriginalExtension() ?: $this->upload->extension()));
 
         if (! is_string($mimeType) || $extension === '') {
             $this->addError('upload', 'Jenis file tidak dapat ditentukan.');
@@ -408,11 +408,28 @@ new #[Layout('layouts::admin')] #[Title('Kelola Kamus — Admin Signify')] class
             return false;
         }
 
+        $allowedMimes = [
+            'png' => 'image/png',
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'webp' => 'image/webp',
+            'gif' => 'image/gif',
+            'mp4' => 'video/mp4',
+            'webm' => 'video/webm',
+            'mov' => 'video/quicktime',
+        ];
+
+        $bucketMimeType = $allowedMimes[$extension] ?? $mimeType;
+
         try {
             $path = $this->upload->storeAs(
                 'kamus/'.$item->id,
                 Str::uuid().'.'.$extension,
-                's3',
+                [
+                    'disk' => 's3',
+                    'ContentType' => $bucketMimeType,
+                    'mimetype' => $bucketMimeType,
+                ],
             );
         } catch (\Throwable $exception) {
             report($exception);
@@ -428,12 +445,12 @@ new #[Layout('layouts::admin')] #[Title('Kelola Kamus — Admin Signify')] class
         }
 
         try {
-            $mediaId = DB::transaction(function () use ($item, $mimeType, $path): int {
+            $mediaId = DB::transaction(function () use ($item, $bucketMimeType, $path): int {
                 $media = LibraryMedia::query()->create([
                     'library_item_id' => null,
-                    'media_type' => str_starts_with($mimeType, 'image/') ? 'image' : 'video',
+                    'media_type' => str_starts_with($bucketMimeType, 'image/') ? 'image' : 'video',
                     'storage_path' => $path,
-                    'mime_type' => $mimeType,
+                    'mime_type' => $bucketMimeType,
                     'file_size_bytes' => (int) $this->upload?->getSize(),
                     'alt_text' => filled($this->uploadAltText) ? trim($this->uploadAltText) : null,
                     'caption' => filled($this->uploadCaption) ? trim($this->uploadCaption) : null,
@@ -633,7 +650,7 @@ new #[Layout('layouts::admin')] #[Title('Kelola Kamus — Admin Signify')] class
             :selected-media="$this->selectedMedia"
             :media-options="$this->mediaOptions"
             :upload="$upload"
-            :upload-limit-kb="(int) config('services.media.max_upload_kb', 2048)"
+            :upload-limit-kb="(int) config('services.media.max_upload_kb', 51200)"
         />
     @endif
 </div>

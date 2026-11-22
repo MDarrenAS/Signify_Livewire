@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * @use HasFactory<QuizQuestionFactory>
@@ -72,7 +73,22 @@ class QuizQuestion extends Model
             }
         }
 
-        return $this->media_url;
+        if (filled($this->media_url)) {
+            if (str_starts_with($this->media_url, 'http://') || str_starts_with($this->media_url, 'https://') || str_starts_with($this->media_url, '/storage/')) {
+                return $this->media_url;
+            }
+
+            try {
+                return Storage::disk('s3')->temporaryUrl(
+                    $this->media_url,
+                    now()->addMinutes((int) config('services.media.signed_url_minutes', 60)),
+                );
+            } catch (\Throwable) {
+                return Storage::disk('s3')->url($this->media_url);
+            }
+        }
+
+        return null;
     }
 
     protected function question(): Attribute

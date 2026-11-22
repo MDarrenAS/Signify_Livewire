@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * @use HasFactory<QuizOptionFactory>
@@ -54,6 +55,21 @@ class QuizOption extends Model
                 return $this->media->temporaryUrl();
             } catch (\Throwable) {
                 return $this->media->storage_path ? '/storage/'.$this->media->storage_path : null;
+            }
+        }
+
+        if (filled($this->media_url)) {
+            if (str_starts_with($this->media_url, 'http://') || str_starts_with($this->media_url, 'https://') || str_starts_with($this->media_url, '/storage/')) {
+                return $this->media_url;
+            }
+
+            try {
+                return Storage::disk('s3')->temporaryUrl(
+                    $this->media_url,
+                    now()->addMinutes((int) config('services.media.signed_url_minutes', 60)),
+                );
+            } catch (\Throwable) {
+                return Storage::disk('s3')->url($this->media_url);
             }
         }
 

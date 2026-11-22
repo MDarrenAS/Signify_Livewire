@@ -10,6 +10,8 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -52,6 +54,8 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
     public array $questionOptions = ['', '', '', ''];
     public array $questionOptionMediaFiles = [null, null, null, null];
     public array $questionOptionMediaUrls = ['', '', '', ''];
+    public array $questionOptionLibraryItemIds = [null, null, null, null];
+    public array $questionOptionLibraryMediaIds = [null, null, null, null];
     public int $questionCorrectIndex = 0;
 
     public function boot(): void
@@ -134,19 +138,38 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
         $this->validate([
             'title'    => 'required|string|min:3|max:100',
             'xpReward' => 'required|integer|min:5|max:500',
-            'iconFile' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp,svg|max:10240',
+            'iconFile' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|extensions:jpg,jpeg,png,gif,webp|max:10240',
         ], [
             'title.required' => 'Judul paket kuis wajib diisi.',
-            'iconFile.mimes' => 'Ikon kuis harus berupa file gambar atau GIF (JPG, PNG, GIF, SVG, WEBP).',
+            'iconFile.mimes' => 'Ikon kuis harus berupa file gambar atau GIF (PNG, JPG, WebP, GIF).',
         ]);
 
         $finalIconUrl = $this->iconUrl;
         if ($this->iconFile) {
             try {
-                $path = $this->iconFile->store('quizzes/icons', 'public');
-                $finalIconUrl = '/storage/' . $path;
+                $ext = strtolower((string) ($this->iconFile->getClientOriginalExtension() ?: $this->iconFile->extension()));
+                $mime = $this->iconFile->getMimeType();
+                $allowedMimes = [
+                    'png' => 'image/png',
+                    'jpg' => 'image/jpeg',
+                    'jpeg' => 'image/jpeg',
+                    'webp' => 'image/webp',
+                    'gif' => 'image/gif',
+                ];
+                $bucketMimeType = $allowedMimes[$ext] ?? $mime;
+                $path = $this->iconFile->storeAs('quizzes/icons', Str::uuid().'.'.$ext, [
+                    'disk' => 's3',
+                    'ContentType' => $bucketMimeType,
+                    'mimetype' => $bucketMimeType,
+                ]);
+                $finalIconUrl = $path;
             } catch (\Throwable $e) {
-                // Fallback
+                try {
+                    $path = $this->iconFile->store('quizzes/icons', 'public');
+                    $finalIconUrl = '/storage/'.$path;
+                } catch (\Throwable) {
+                    // Fallback
+                }
             }
         }
 
@@ -224,15 +247,32 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
         $this->questionOptions        = ['', '', '', ''];
         $this->questionOptionMediaFiles = [null, null, null, null];
         $this->questionOptionMediaUrls  = ['', '', '', ''];
+        $this->questionOptionLibraryItemIds = [null, null, null, null];
+        $this->questionOptionLibraryMediaIds = [null, null, null, null];
         $this->questionCorrectIndex   = 0;
         $this->showAddQuestionModal   = true;
+    }
+
+    public function updatedQuestionType(string $val): void
+    {
+        if ($this->selectedLibraryItemId) {
+            $this->applyKamusItem($this->selectedLibraryItemId);
+        } else {
+            if ($val === 'sign_to_word') {
+                $this->questionText = 'Perhatikan gerakan isyarat ini. Manakah arti atau huruf yang benar?';
+            } elseif ($val === 'word_to_sign') {
+                $this->questionText = 'Manakah gerakan isyarat BISINDO yang tepat?';
+            } elseif ($val === 'media_to_sign') {
+                $this->questionText = 'Perhatikan gambar objek di atas. Manakah gerakan isyarat yang tepat?';
+            }
+        }
     }
 
     public function openEditQuestion(int $questionId): void
     {
         $question = QuizQuestion::query()
             ->where('quiz_id', $this->manageQuizId)
-            ->with(['options', 'media'])
+            ->with(['options.media', 'options.libraryItem', 'media', 'libraryItem'])
             ->findOrFail($questionId);
 
         $this->resetValidation();
@@ -251,10 +291,14 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
         $this->questionOptions         = ['', '', '', ''];
         $this->questionOptionMediaFiles = [null, null, null, null];
         $this->questionOptionMediaUrls  = ['', '', '', ''];
+        $this->questionOptionLibraryItemIds = [null, null, null, null];
+        $this->questionOptionLibraryMediaIds = [null, null, null, null];
         $this->questionCorrectIndex    = 0;
         foreach ($options as $idx => $opt) {
             if ($idx < 4) {
                 $this->questionOptions[$idx] = $opt->option_text ?? $opt->getEffectiveText();
+                $this->questionOptionLibraryItemIds[$idx] = $opt->library_item_id;
+                $this->questionOptionLibraryMediaIds[$idx] = $opt->library_media_id;
                 $this->questionOptionMediaUrls[$idx] = $opt->getEffectiveMediaUrl() ?? '';
                 if ($opt->is_correct) {
                     $this->questionCorrectIndex = $idx;
@@ -279,34 +323,161 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
 
         $this->selectedLibraryItemId = $item->id;
         $primaryMedia = $item->media->first();
-        if ($primaryMedia) {
-            $this->selectedLibraryMediaId = $primaryMedia->id;
-            try {
-                $this->questionMediaUrl = $primaryMedia->temporaryUrl();
-            } catch (\Throwable) {
-                $this->questionMediaUrl = $primaryMedia->storage_path ? '/storage/' . $primaryMedia->storage_path : '';
-            }
-        }
+        $correctIdx = (int) $this->questionCorrectIndex;
 
         if ($this->questionType === 'sign_to_word') {
+            // Soal berupa isyarat video, jawaban berupa teks kata
+            if ($primaryMedia) {
+                $this->selectedLibraryMediaId = $primaryMedia->id;
+                $this->questionMediaUrl = $this->resolveMediaUrl($primaryMedia);
+            }
             $this->questionText = 'Perhatikan peragaan isyarat di atas. Manakah kosakata yang tepat?';
-            $this->questionOptions[$this->questionCorrectIndex] = $item->title;
+            $this->questionOptions[$correctIdx] = $item->title;
+            $this->questionOptionLibraryItemIds[$correctIdx] = $item->id;
+            $this->questionOptionLibraryMediaIds[$correctIdx] = null;
+            $this->questionOptionMediaUrls[$correctIdx] = '';
+            $this->questionOptionMediaFiles[$correctIdx] = null;
 
             // Isi opsi lainnya dengan kata lain dari kamus jika masih kosong
             $otherWords = LibraryItem::where('id', '!=', $item->id)->inRandomOrder()->limit(3)->pluck('title')->all();
             $otherIdx = 0;
             for ($i = 0; $i < 4; $i++) {
-                if ($i !== (int) $this->questionCorrectIndex && isset($otherWords[$otherIdx])) {
+                if ($i !== $correctIdx && isset($otherWords[$otherIdx])) {
                     $this->questionOptions[$i] = $otherWords[$otherIdx];
+                    $this->questionOptionLibraryItemIds[$i] = null;
+                    $this->questionOptionLibraryMediaIds[$i] = null;
+                    $this->questionOptionMediaUrls[$i] = '';
+                    $this->questionOptionMediaFiles[$i] = null;
                     $otherIdx++;
                 }
             }
         } elseif ($this->questionType === 'word_to_sign') {
+            // Soal berupa teks kata/huruf, jawaban berupa video/gambar isyarat!
+            $this->selectedLibraryMediaId = null;
+            $this->questionMediaUrl = '';
+            $this->questionMediaFile = null;
             $this->questionText = 'Manakah gerakan isyarat BISINDO yang melambangkan: "' . $item->title . '"?';
-            $this->questionOptions[$this->questionCorrectIndex] = 'Gerakan: ' . $item->title;
+
+            // Kunci jawaban otomatis menarik video/gambar isyarat dari item kamus terpilih
+            $this->questionOptions[$correctIdx] = 'Isyarat: ' . $item->title;
+            $this->questionOptionLibraryItemIds[$correctIdx] = $item->id;
+            $this->questionOptionLibraryMediaIds[$correctIdx] = $primaryMedia?->id;
+            $this->questionOptionMediaUrls[$correctIdx] = $primaryMedia ? $this->resolveMediaUrl($primaryMedia) : '';
+            $this->questionOptionMediaFiles[$correctIdx] = null;
+
+            // Opsi pengecoh lainnya otomatis mengambil kosakata lain dari kamus jika tersedia
+            $distractors = LibraryItem::with(['media'])
+                ->where('id', '!=', $item->id)
+                ->inRandomOrder()
+                ->limit(3)
+                ->get();
+
+            $distIdx = 0;
+            for ($i = 0; $i < 4; $i++) {
+                if ($i !== $correctIdx) {
+                    if (isset($distractors[$distIdx])) {
+                        $dItem = $distractors[$distIdx];
+                        $dMedia = $dItem->media->first();
+                        $this->questionOptions[$i] = 'Isyarat: ' . $dItem->title;
+                        $this->questionOptionLibraryItemIds[$i] = $dItem->id;
+                        $this->questionOptionLibraryMediaIds[$i] = $dMedia?->id;
+                        $this->questionOptionMediaUrls[$i] = $dMedia ? $this->resolveMediaUrl($dMedia) : '';
+                        $this->questionOptionMediaFiles[$i] = null;
+                        $distIdx++;
+                    } elseif (blank($this->questionOptions[$i])) {
+                        $this->questionOptions[$i] = 'Isyarat Alternatif ' . chr(65 + $i);
+                    }
+                }
+            }
         } elseif ($this->questionType === 'media_to_sign') {
+            // Soal berupa gambar objek riil, jawaban berupa video/gambar isyarat
             $this->questionText = 'Perhatikan gambar objek di atas. Manakah gerakan isyarat yang tepat untuk "' . $item->title . '"?';
-            $this->questionOptions[$this->questionCorrectIndex] = 'Isyarat: ' . $item->title;
+
+            // Kunci jawaban otomatis menarik media isyarat dari kamus
+            $this->questionOptions[$correctIdx] = 'Isyarat: ' . $item->title;
+            $this->questionOptionLibraryItemIds[$correctIdx] = $item->id;
+            $this->questionOptionLibraryMediaIds[$correctIdx] = $primaryMedia?->id;
+            $this->questionOptionMediaUrls[$correctIdx] = $primaryMedia ? $this->resolveMediaUrl($primaryMedia) : '';
+            $this->questionOptionMediaFiles[$correctIdx] = null;
+
+            // Opsi pengecoh lainnya
+            $distractors = LibraryItem::with(['media'])
+                ->where('id', '!=', $item->id)
+                ->inRandomOrder()
+                ->limit(3)
+                ->get();
+
+            $distIdx = 0;
+            for ($i = 0; $i < 4; $i++) {
+                if ($i !== $correctIdx) {
+                    if (isset($distractors[$distIdx])) {
+                        $dItem = $distractors[$distIdx];
+                        $dMedia = $dItem->media->first();
+                        $this->questionOptions[$i] = 'Isyarat: ' . $dItem->title;
+                        $this->questionOptionLibraryItemIds[$i] = $dItem->id;
+                        $this->questionOptionLibraryMediaIds[$i] = $dMedia?->id;
+                        $this->questionOptionMediaUrls[$i] = $dMedia ? $this->resolveMediaUrl($dMedia) : '';
+                        $this->questionOptionMediaFiles[$i] = null;
+                        $distIdx++;
+                    } elseif (blank($this->questionOptions[$i])) {
+                        $this->questionOptions[$i] = 'Isyarat Alternatif ' . chr(65 + $i);
+                    }
+                }
+            }
+        }
+    }
+
+    public function applyKamusItemToOption(int $optionIndex, $itemId): void
+    {
+        if (! isset($this->questionOptions[$optionIndex])) {
+            return;
+        }
+
+        if (blank($itemId)) {
+            $this->questionOptionLibraryItemIds[$optionIndex] = null;
+            $this->questionOptionLibraryMediaIds[$optionIndex] = null;
+            $this->questionOptionMediaUrls[$optionIndex] = '';
+            return;
+        }
+
+        $item = LibraryItem::with(['media'])->find($itemId);
+        if (! $item) {
+            return;
+        }
+
+        $primaryMedia = $item->media->first();
+        $this->questionOptionLibraryItemIds[$optionIndex] = $item->id;
+        $this->questionOptions[$optionIndex] = $this->questionType === 'sign_to_word'
+            ? $item->title
+            : 'Isyarat: ' . $item->title;
+
+        if ($primaryMedia) {
+            $this->questionOptionLibraryMediaIds[$optionIndex] = $primaryMedia->id;
+            $this->questionOptionMediaUrls[$optionIndex] = $this->resolveMediaUrl($primaryMedia);
+        } else {
+            $this->questionOptionLibraryMediaIds[$optionIndex] = null;
+            $this->questionOptionMediaUrls[$optionIndex] = '';
+        }
+
+        $this->questionOptionMediaFiles[$optionIndex] = null;
+    }
+
+    public function clearOptionMedia(int $optionIndex): void
+    {
+        if (isset($this->questionOptions[$optionIndex])) {
+            $this->questionOptionMediaUrls[$optionIndex] = '';
+            $this->questionOptionMediaFiles[$optionIndex] = null;
+            $this->questionOptionLibraryMediaIds[$optionIndex] = null;
+            $this->questionOptionLibraryItemIds[$optionIndex] = null;
+        }
+    }
+
+    private function resolveMediaUrl(LibraryMedia $media): string
+    {
+        try {
+            return $media->temporaryUrl();
+        } catch (\Throwable) {
+            return $media->storage_path ? '/storage/' . $media->storage_path : '';
         }
     }
 
@@ -316,21 +487,21 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
         $this->validate([
             'questionType'                 => ['required', 'in:sign_to_word,word_to_sign,media_to_sign'],
             'questionText'                 => ['nullable', 'string', 'max:250'],
-            'questionMediaUrl'             => ['nullable', 'string', 'max:2048', 'regex:/^(https?:\/\/|\/storage\/)/i'],
-            'questionMediaFile'            => ['nullable', 'file', 'mimes:mp4,webm,gif,png,jpg,jpeg,webp', 'max:30720'],
+            'questionMediaUrl'             => ['nullable', 'string', 'max:2048'],
+            'questionMediaFile'            => ['nullable', 'file', 'mimes:mp4,webm,mov,gif,png,jpg,jpeg,webp', 'extensions:mp4,webm,mov,gif,png,jpg,jpeg,webp', 'max:'.(int) config('services.media.max_upload_kb', 51200)],
             'questionOptions'              => ['required', 'array', 'size:4'],
             'questionOptions.*'            => ['nullable', 'string', 'max:100'],
             'questionOptionMediaFiles'     => ['required', 'array', 'size:4'],
-            'questionOptionMediaFiles.*'   => ['nullable', 'file', 'mimes:mp4,webm,gif,png,jpg,jpeg,webp', 'max:30720'],
+            'questionOptionMediaFiles.*'   => ['nullable', 'file', 'mimes:mp4,webm,mov,gif,png,jpg,jpeg,webp', 'extensions:mp4,webm,mov,gif,png,jpg,jpeg,webp', 'max:'.(int) config('services.media.max_upload_kb', 51200)],
             'questionOptionMediaUrls'      => ['required', 'array', 'size:4'],
-            'questionOptionMediaUrls.*'    => ['nullable', 'string', 'max:2048', 'regex:/^(https?:\/\/|\/storage\/)/i'],
+            'questionOptionMediaUrls.*'    => ['nullable', 'string', 'max:2048'],
             'questionCorrectIndex'         => ['required', 'integer', 'between:0,3'],
             'selectedLibraryItemId'        => ['nullable', 'integer', 'exists:library_items,id'],
             'selectedLibraryMediaId'       => ['nullable', 'integer', 'exists:library_media,id'],
         ], [
             'questionType.in' => 'Tipe soal tidak valid.',
-            'questionMediaFile.mimes' => 'Media soal harus berupa file video (MP4, WEBM) atau gambar (GIF, PNG, JPG).',
-            'questionOptionMediaFiles.*.mimes' => 'Media pilihan harus berupa file video (MP4, WEBM) atau gambar (GIF, PNG, JPG).',
+            'questionMediaFile.mimes' => 'Media soal harus berupa file video (MP4, WEBM, MOV) atau gambar (PNG, JPG, WEBP, GIF).',
+            'questionOptionMediaFiles.*.mimes' => 'Media pilihan harus berupa file video (MP4, WEBM, MOV) atau gambar (PNG, JPG, WEBP, GIF).',
         ]);
 
         $hasQuestionContent = filled($this->questionText)
@@ -344,12 +515,13 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
         }
 
         foreach ($this->questionOptions as $index => $optionText) {
-            if (
-                blank($optionText)
-                && blank($this->questionOptionMediaUrls[$index] ?? null)
-                && ($this->questionOptionMediaFiles[$index] ?? null) === null
-            ) {
-                $this->addError("questionOptions.{$index}", 'Isi teks atau unggah media untuk pilihan ini.');
+            $hasOptionContent = filled($optionText)
+                || filled($this->questionOptionMediaUrls[$index] ?? null)
+                || ($this->questionOptionMediaFiles[$index] ?? null) !== null
+                || ($this->questionOptionLibraryMediaIds[$index] ?? null) !== null;
+
+            if (! $hasOptionContent) {
+                $this->addError("questionOptions.{$index}", 'Isi teks atau pilih/unggah media untuk pilihan ini.');
             }
         }
 
@@ -358,15 +530,24 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
         }
 
         $quiz = Quiz::query()->findOrFail($this->manageQuizId ?? 0);
-        $finalUrl = $this->questionMediaUrl;
+
+        // Determine the media_url to persist (must be a short storage path, not a signed URL).
+        // When a kamus item is selected, the relationship (library_media_id) handles display,
+        // so we don't need to store a URL at all.
+        $finalUrl = null;
         if ($this->questionMediaFile) {
             $finalUrl = $this->storeMedia($this->questionMediaFile, 'quizzes/media');
+        } elseif (! $this->selectedLibraryMediaId && filled($this->questionMediaUrl)) {
+            // Strip any signed URL back to a storage path for direct uploads already on S3
+            $finalUrl = $this->extractStoragePath($this->questionMediaUrl);
         }
 
-        $finalOptionMediaUrls = $this->questionOptionMediaUrls;
-        foreach ($this->questionOptionMediaFiles as $index => $mediaFile) {
-            if ($mediaFile) {
-                $finalOptionMediaUrls[$index] = $this->storeMedia($mediaFile, 'quizzes/options');
+        $finalOptionMediaUrls = [];
+        foreach ($this->questionOptionMediaUrls as $index => $optUrl) {
+            if ($this->questionOptionMediaFiles[$index] ?? null) {
+                $finalOptionMediaUrls[$index] = $this->storeMedia($this->questionOptionMediaFiles[$index], 'quizzes/options');
+            } else {
+                $finalOptionMediaUrls[$index] = filled($optUrl) ? $this->extractStoragePath($optUrl) : null;
             }
         }
 
@@ -387,11 +568,17 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
                 // Delete old options and recreate
                 $question->options()->delete();
                 foreach ($this->questionOptions as $idx => $optText) {
+                    $optMediaId = $this->questionOptionLibraryMediaIds[$idx] ?? null;
+                    $optItemId = $this->questionOptionLibraryItemIds[$idx] ?? null;
+                    $optMediaUrl = $optMediaId ? null : ($finalOptionMediaUrls[$idx] ?: null);
+
                     $question->options()->create([
-                        'option_text' => $optText,
-                        'media_url'   => $finalOptionMediaUrls[$idx] ?: null,
-                        'is_correct'  => $idx === (int) $this->questionCorrectIndex,
-                        'sort_order'  => $idx,
+                        'library_item_id'  => $optItemId,
+                        'library_media_id' => $optMediaId,
+                        'option_text'      => $optText,
+                        'media_url'        => $optMediaUrl,
+                        'is_correct'       => $idx === (int) $this->questionCorrectIndex,
+                        'sort_order'       => $idx,
                     ]);
                 }
             } else {
@@ -408,11 +595,17 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
                 ]);
 
                 foreach ($this->questionOptions as $idx => $optText) {
+                    $optMediaId = $this->questionOptionLibraryMediaIds[$idx] ?? null;
+                    $optItemId = $this->questionOptionLibraryItemIds[$idx] ?? null;
+                    $optMediaUrl = $optMediaId ? null : ($finalOptionMediaUrls[$idx] ?: null);
+
                     $question->options()->create([
-                        'option_text' => $optText,
-                        'media_url'   => $finalOptionMediaUrls[$idx] ?: null,
-                        'is_correct'  => $idx === (int) $this->questionCorrectIndex,
-                        'sort_order'  => $idx,
+                        'library_item_id'  => $optItemId,
+                        'library_media_id' => $optMediaId,
+                        'option_text'      => $optText,
+                        'media_url'        => $optMediaUrl,
+                        'is_correct'       => $idx === (int) $this->questionCorrectIndex,
+                        'sort_order'       => $idx,
                     ]);
                 }
             }
@@ -443,6 +636,37 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
 
     private function storeMedia(UploadedFile $file, string $directory): string
     {
+        $extension = strtolower((string) ($file->getClientOriginalExtension() ?: $file->extension()));
+        $mimeType = $file->getMimeType();
+
+        $allowedMimes = [
+            'png' => 'image/png',
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'webp' => 'image/webp',
+            'gif' => 'image/gif',
+            'mp4' => 'video/mp4',
+            'webm' => 'video/webm',
+            'mov' => 'video/quicktime',
+        ];
+
+        $bucketMimeType = $allowedMimes[$extension] ?? $mimeType;
+
+        try {
+            $path = $file->storeAs($directory, Str::uuid().'.'.$extension, [
+                'disk' => 's3',
+                'ContentType' => $bucketMimeType,
+                'mimetype' => $bucketMimeType,
+            ]);
+
+            if ($path !== false && is_string($path)) {
+                return $path;
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        // Fallback to local public disk if S3 fails
         $path = $file->store($directory, 'public');
 
         if ($path === false) {
@@ -450,6 +674,51 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
         }
 
         return '/storage/'.$path;
+    }
+
+    /**
+     * Extract a short storage path from a value that may be a full signed S3 URL,
+     * a /storage/ local path, or already a short storage path.
+     */
+    private function extractStoragePath(string $url): string
+    {
+        // Already a short storage path (e.g. "quizzes/media/uuid.mp4" or "kamus/1/uuid.mp4")
+        if (! str_starts_with($url, 'http://') && ! str_starts_with($url, 'https://') && ! str_starts_with($url, '/storage/')) {
+            return $url;
+        }
+
+        // Local storage path — keep as-is
+        if (str_starts_with($url, '/storage/')) {
+            return $url;
+        }
+
+        // Signed S3 URL — extract the storage path from the URL path segment
+        // e.g. https://...supabase.co/storage/v1/s3/bisindo-media/kamus/1/uuid.mp4?X-Amz-...
+        $parsed = parse_url($url, PHP_URL_PATH);
+        if ($parsed) {
+            $bucket = config('filesystems.disks.s3.bucket', 'bisindo-media');
+            $marker = '/s3/' . $bucket . '/';
+            $pos = strpos($parsed, $marker);
+            if ($pos !== false) {
+                return substr($parsed, $pos + strlen($marker));
+            }
+
+            // Also try /object/ path format: /storage/v1/object/.../bucket/path
+            $objectMarker = '/object/public/' . $bucket . '/';
+            $objPos = strpos($parsed, $objectMarker);
+            if ($objPos !== false) {
+                return substr($parsed, $objPos + strlen($objectMarker));
+            }
+
+            $objectAuthMarker = '/object/authenticated/' . $bucket . '/';
+            $objAuthPos = strpos($parsed, $objectAuthMarker);
+            if ($objAuthPos !== false) {
+                return substr($parsed, $objAuthPos + strlen($objectAuthMarker));
+            }
+        }
+
+        // If we can't extract a path, return the original (truncation will be caught by validation)
+        return $url;
     }
 };
 ?>
@@ -623,5 +892,6 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
         :selected-library-item-id="$selectedLibraryItemId"
         :option-media-files="$questionOptionMediaFiles"
         :option-media-urls="$questionOptionMediaUrls"
+        :option-library-item-ids="$questionOptionLibraryItemIds"
     />
 </div>

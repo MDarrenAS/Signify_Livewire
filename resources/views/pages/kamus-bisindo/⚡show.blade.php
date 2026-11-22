@@ -89,8 +89,7 @@ new #[Title('Kamus BISINDO')] class extends Component
                                 class="mx-auto max-h-96 w-full rounded-xl object-contain"
                             >
                         @else
-                            <video
-                                controls
+                            <video controls
                                 preload="metadata"
                                 class="w-full rounded-xl"
                             >

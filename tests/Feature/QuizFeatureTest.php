@@ -2,6 +2,7 @@
 
 use App\Models\LibraryCategory;
 use App\Models\LibraryItem;
+use App\Models\LibraryMedia;
 use App\Models\Quiz;
 use App\Models\QuizAttempt;
 use App\Models\QuizOption;
@@ -279,9 +280,10 @@ it('allows admin to edit a question and attach media to an answer option', funct
     expect($updatedQuestion->question_text)->toBe('Pertanyaan yang diperbarui');
     expect($options)->toHaveCount(4);
     expect($options[1]->is_correct)->toBeTrue();
-    expect($options[1]->media_url)->toStartWith('/storage/quizzes/options/');
+    expect($options[1]->media_url)->toStartWith('quizzes/options/');
+    expect($options[1]->getEffectiveMediaUrl())->toContain('quizzes/options/');
 
-    Storage::disk('public')->assertExists(str_replace('/storage/', '', $options[1]->media_url));
+    Storage::disk('s3')->delete($options[1]->media_url);
 });
 
 it('rejects unsupported question types without creating a question', function (): void {
@@ -397,4 +399,110 @@ it('displays completed badge and retry button on latihan index after completion'
         ->assertSee('Kuis Sudah Selesai')
         ->assertSee('✓ Selesai (100%)')
         ->assertSee('Ulangi Latihan');
+});
+
+it('uploads quiz question media to S3 bucket and resolves effective media URL', function (): void {
+    Storage::fake('s3');
+    $admin = User::factory()->admin()->create();
+    $quiz = Quiz::factory()->create();
+
+    $upload = UploadedFile::fake()->create('question_video.mp4', 500, 'video/mp4');
+
+    Livewire::actingAs($admin)
+        ->test('pages::admin.latihan-kuis.index')
+        ->set('manageQuizId', $quiz->id)
+        ->call('openAddQuestion')
+        ->set('questionType', 'sign_to_word')
+        ->set('questionText', 'Perhatikan gerakan isyarat ini.')
+        ->set('questionMediaFile', $upload)
+        ->set('questionOptions', ['Halo', 'Terima Kasih', 'Sama-Sama', 'Sampai Jumpa'])
+        ->set('questionCorrectIndex', 0)
+        ->call('saveQuestion')
+        ->assertHasNoErrors();
+
+    $question = $quiz->questions()->firstOrFail();
+
+    expect($question->media_url)->toStartWith('quizzes/media/');
+    expect($question->media_url)->toEndWith('.mp4');
+    expect($question->getEffectiveMediaUrl())->toContain('quizzes/media/');
+    Storage::disk('s3')->assertExists($question->media_url);
+});
+
+it('pulls media from kamus item into correct answer option for word_to_sign quiz type', function (): void {
+    Storage::fake('s3');
+    $admin = User::factory()->admin()->create();
+    $quiz = Quiz::factory()->create();
+
+    $category = LibraryCategory::factory()->create();
+    $itemA = LibraryItem::factory()->create([
+        'category_id' => $category->id,
+        'title' => 'Huruf A',
+    ]);
+    $mediaA = LibraryMedia::factory()->create([
+        'library_item_id' => $itemA->id,
+        'storage_path' => 'kamus/items/huruf_a.mp4',
+        'is_primary' => true,
+    ]);
+    $itemA->media()->attach($mediaA->id, ['is_primary' => true]);
+
+    Livewire::actingAs($admin)
+        ->test('pages::admin.latihan-kuis.index')
+        ->set('manageQuizId', $quiz->id)
+        ->call('openAddQuestion')
+        ->set('questionType', 'word_to_sign')
+        ->call('applyKamusItem', $itemA->id)
+        ->assertSet('questionText', 'Manakah gerakan isyarat BISINDO yang melambangkan: "Huruf A"?')
+        ->assertSet('questionOptionLibraryItemIds.0', $itemA->id)
+        ->assertSet('questionOptionLibraryMediaIds.0', $mediaA->id)
+        ->call('saveQuestion')
+        ->assertHasNoErrors();
+
+    $question = $quiz->questions()->firstOrFail();
+    $correctOption = $question->options()->where('is_correct', true)->firstOrFail();
+
+    expect($correctOption->library_item_id)->toBe($itemA->id);
+    expect($correctOption->library_media_id)->toBe($mediaA->id);
+    expect($correctOption->getEffectiveMediaUrl())->not->toBeNull();
+});
+
+it('allows selecting kamus item directly for an individual answer option', function (): void {
+    Storage::fake('s3');
+    $admin = User::factory()->admin()->create();
+    $quiz = Quiz::factory()->create();
+
+    $category = LibraryCategory::factory()->create();
+    $itemB = LibraryItem::factory()->create([
+        'category_id' => $category->id,
+        'title' => 'Huruf B',
+    ]);
+    $mediaB = LibraryMedia::factory()->create([
+        'library_item_id' => $itemB->id,
+        'storage_path' => 'kamus/items/huruf_b.mp4',
+        'is_primary' => true,
+    ]);
+    $itemB->media()->attach($mediaB->id, ['is_primary' => true]);
+
+    Livewire::actingAs($admin)
+        ->test('pages::admin.latihan-kuis.index')
+        ->set('manageQuizId', $quiz->id)
+        ->call('openAddQuestion')
+        ->set('questionType', 'word_to_sign')
+        ->set('questionText', 'Tebak isyarat huruf B')
+        ->call('applyKamusItemToOption', 1, $itemB->id)
+        ->assertSet('questionOptions.1', 'Isyarat: Huruf B')
+        ->assertSet('questionOptionLibraryItemIds.1', $itemB->id)
+        ->assertSet('questionOptionLibraryMediaIds.1', $mediaB->id)
+        ->set('questionOptions.0', 'Pilihan A')
+        ->set('questionOptions.2', 'Pilihan C')
+        ->set('questionOptions.3', 'Pilihan D')
+        ->set('questionCorrectIndex', 1)
+        ->call('saveQuestion')
+        ->assertHasNoErrors();
+
+    $question = $quiz->questions()->firstOrFail();
+    $optionB = $question->options()->where('sort_order', 1)->firstOrFail();
+
+    expect($optionB->library_item_id)->toBe($itemB->id);
+    expect($optionB->library_media_id)->toBe($mediaB->id);
+    expect($optionB->is_correct)->toBeTrue();
 });

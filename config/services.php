@@ -29,7 +29,7 @@ return [
     ],
 
     'media' => [
-        'max_upload_kb' => (int) env('MEDIA_MAX_UPLOAD_KB', 2048),
+        'max_upload_kb' => (int) env('MEDIA_MAX_UPLOAD_KB', 51200),
         'signed_url_minutes' => env('MEDIA_SIGNED_URL_MINUTES', 15),
     ],
 

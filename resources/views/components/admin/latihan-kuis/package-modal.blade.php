@@ -50,9 +50,9 @@
             model="iconFile"
             url-model="iconUrl"
             :current-url="$iconUrl"
-            accept="image/*,.gif,.svg"
+            accept="image/png,image/jpeg,image/webp,image/gif"
             label="Ikon / Cover Visual Kuis (Gambar atau GIF)"
-            hint="Unggah file JPG, PNG, GIF, atau SVG sebagai thumbnail paket kuis (Maks. 10MB)"
+            hint="Unggah file PNG, JPG, WebP, atau GIF sebagai thumbnail paket kuis (Maks. 10MB)"
         >
             @if ($iconFile)
                 <div class="flex items-center gap-3 p-2 bg-[#F0FDF4] border border-[#86EFAC] rounded-xl">

@@ -9,6 +9,7 @@
     'selectedLibraryItemId' => null,
     'optionMediaFiles' => [],
     'optionMediaUrls' => [],
+    'optionLibraryItemIds' => [],
 ])
 
 <x-admin.modal
@@ -79,9 +80,9 @@
                 model="questionMediaFile"
                 url-model="questionMediaUrl"
                 :current-url="$mediaUrl"
-                accept="video/mp4,video/webm,image/*,.gif"
+                accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
                 label="{{ $questionType === 'media_to_sign' ? 'Media Objek Riil (Foto/Gambar yang Ditebak)' : 'Media Video Isyarat Soal' }}"
-                hint="Unggah file MP4, GIF, PNG, atau JPG peragaan isyarat soal kuis (Maks. 30MB)"
+                hint="Unggah file PNG, JPG, WebP, GIF, MP4, WebM, atau MOV peragaan isyarat soal kuis (Maks. 50MB)"
             >
                 @if ($mediaFile)
                     @php $isImg = str_contains($mediaFile->getMimeType(), 'image'); @endphp
@@ -120,6 +121,7 @@
                 @php
                     $optionMediaFile = $optionMediaFiles[$optIdx] ?? null;
                     $optionMediaUrl = $optionMediaUrls[$optIdx] ?? '';
+                    $selectedOptionItemId = $optionLibraryItemIds[$optIdx] ?? null;
                 @endphp
                 <div wire:key="question-option-{{ $optIdx }}" class="space-y-2 p-2.5 rounded-xl border border-[#E4E4E7] bg-[#FAFAFA]">
                     <div class="flex items-center gap-2.5">
@@ -143,13 +145,43 @@
                         />
                     </div>
 
+                    {{-- Pilihan Ambil Media dari Kamus BISINDO untuk Opsi Ini --}}
+                    @if (count($kamusItems) > 0)
+                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 p-2 rounded-lg bg-white border border-[#E4E4E7]">
+                            <span class="text-[10px] font-extrabold text-[#71717A] uppercase shrink-0">
+                                📖 Kamus:
+                            </span>
+                            <select
+                                wire:change="applyKamusItemToOption({{ $optIdx }}, $event.target.value)"
+                                class="flex-1 px-2 py-1 rounded border border-[#E4E4E7] text-[11px] font-semibold bg-[#FAFAFA] focus:outline-none focus:border-[#F9B92F]"
+                            >
+                                <option value="">-- Pilih Kosakata Kamus (Otomatis Isi Media & Teks) --</option>
+                                @foreach ($kamusItems as $kItem)
+                                    <option value="{{ $kItem->id }}" {{ (int) $selectedOptionItemId === $kItem->id ? 'selected' : '' }}>
+                                        {{ $kItem->title }} ({{ $kItem->category->name ?? 'Kamus' }})
+                                    </option>
+                                @endforeach
+                            </select>
+                            @if (filled($optionMediaUrl) || $optionMediaFile || $selectedOptionItemId)
+                                <button
+                                    type="button"
+                                    wire:click="clearOptionMedia({{ $optIdx }})"
+                                    class="px-2 py-1 rounded border border-[#FCA5A5] text-[10px] font-bold text-[#B91C1C] hover:bg-[#FEF2F2] cursor-pointer shrink-0"
+                                    title="Hapus media dari pilihan ini"
+                                >
+                                    ✕ Hapus Media
+                                </button>
+                            @endif
+                        </div>
+                    @endif
+
                     <x-admin.file-uploader
                         model="questionOptionMediaFiles.{{ $optIdx }}"
                         url-model="questionOptionMediaUrls.{{ $optIdx }}"
                         :current-url="$optionMediaUrl"
-                        accept="video/mp4,video/webm,image/jpeg,image/png,image/webp,.gif"
+                        accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
                         label="Media Pilihan {{ chr(65 + $optIdx) }} (Opsional)"
-                        hint="Unggah gambar atau video untuk pilihan ini (Maks. 30MB)"
+                        hint="Unggah file gambar atau video jika ingin menggunakan media sendiri (Maks. 50MB)"
                     >
                         @if ($optionMediaFile)
                             @php $isOptionImage = str_contains($optionMediaFile->getMimeType(), 'image'); @endphp

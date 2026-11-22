@@ -13,6 +13,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Facades\GenerateSignedUploadUrlFacade;
 use Livewire\Livewire;
 
 beforeEach(function (): void {
@@ -300,6 +301,36 @@ it('stores uploaded videos as reusable video media', function (): void {
     Storage::disk('s3')->assertExists($media->storage_path);
 });
 
+it('accepts and stores all allowed bucket MIME types in kamus', function (string $filename, string $mimeType, string $expectedMediaType, string $expectedMime): void {
+    Storage::fake('s3');
+    $category = LibraryCategory::factory()->create();
+    $admin = User::factory()->admin()->create();
+    $upload = UploadedFile::fake()->create($filename, 64, $mimeType);
+
+    Livewire::actingAs($admin)
+        ->test('pages::admin.kamus.index')
+        ->set('categoryId', $category->id)
+        ->set('title', 'Kamus '.$filename)
+        ->set('slug', 'kamus-'.str_replace('.', '-', $filename))
+        ->set('itemType', 'word')
+        ->set('upload', $upload)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $media = LibraryMedia::query()->where('mime_type', $expectedMime)->first();
+    expect($media)->not->toBeNull();
+    expect($media->media_type)->toBe($expectedMediaType);
+    Storage::disk('s3')->assertExists($media->storage_path);
+})->with([
+    ['sample.png', 'image/png', 'image', 'image/png'],
+    ['sample.jpg', 'image/jpeg', 'image', 'image/jpeg'],
+    ['sample.webp', 'image/webp', 'image', 'image/webp'],
+    ['sample.gif', 'image/gif', 'image', 'image/gif'],
+    ['sample.mp4', 'video/mp4', 'video', 'video/mp4'],
+    ['sample.webm', 'video/webm', 'video', 'video/webm'],
+    ['sample.mov', 'video/quicktime', 'video', 'video/quicktime'],
+]);
+
 it('rejects uploads with an unsupported MIME type without creating an entry', function (): void {
     Storage::fake('s3');
     $category = LibraryCategory::factory()->create();
@@ -415,4 +446,26 @@ it('backfills legacy media ownership into the reusable relationship table', func
         'is_primary' => true,
         'caption' => 'Legacy caption',
     ]);
+});
+
+it('accepts temporary video uploads like 1700 KB mp4 on local disk when default disk is s3', function (): void {
+    config([
+        'filesystems.default' => 's3',
+        'livewire.temporary_file_upload.disk' => 'local',
+        'livewire.temporary_file_upload.rules' => 'file|max:51200',
+    ]);
+    Storage::fake('tmp-for-tests');
+
+    $admin = User::factory()->admin()->create();
+    $file = UploadedFile::fake()->create('sample.mp4', 1700, 'video/mp4');
+
+    $signedUrl = GenerateSignedUploadUrlFacade::forLocal();
+
+    $response = $this->actingAs($admin)
+        ->post($signedUrl, [
+            'files' => [$file],
+        ]);
+
+    $response->assertOk()
+        ->assertJsonStructure(['paths']);
 });

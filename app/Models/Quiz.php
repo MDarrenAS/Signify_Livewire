@@ -5,10 +5,12 @@ namespace App\Models;
 use Database\Factories\QuizFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
@@ -70,6 +72,27 @@ class Quiz extends Model
     public function attempts(): HasMany
     {
         return $this->hasMany(QuizAttempt::class, 'quiz_id');
+    }
+
+    protected function iconUrl(): Attribute
+    {
+        return Attribute::make(
+            get: function (?string $value): ?string {
+                if (filled($value)) {
+                    if (str_starts_with($value, 'http://') || str_starts_with($value, 'https://') || str_starts_with($value, '/storage/')) {
+                        return $value;
+                    }
+
+                    try {
+                        return Storage::disk('s3')->temporaryUrl($value, now()->addDays(7));
+                    } catch (\Throwable) {
+                        return Storage::disk('s3')->url($value);
+                    }
+                }
+
+                return $value;
+            },
+        );
     }
 
     public function creator(): BelongsTo
