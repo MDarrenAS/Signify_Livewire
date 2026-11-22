@@ -1,11 +1,12 @@
 <?php
 
-use App\Models\LessonItem;
+use App\Models\LessonLibraryItem;
 use App\Models\Module;
 use App\Models\ModuleLesson;
-use App\Models\ModuleLessonQuestion;
+use App\Models\Quiz;
+use App\Models\QuizOption;
+use App\Models\QuizQuestion;
 use App\Services\CurriculumService;
-use App\Support\MockCurriculum;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
@@ -61,40 +62,61 @@ new #[Layout('layouts::admin')] #[Title('Isi Modul — Admin Signify')] class ex
             $lessonModel = ModuleLesson::find($lessonId);
             if ($lessonModel) {
                 $lessonModel->update([
-                    'title'         => $part['title'] ?? $lessonModel->title,
-                    'xp_reward'     => $part['xp_reward'] ?? $lessonModel->xp_reward,
-                    'passing_score' => $part['passing_score'] ?? $lessonModel->passing_score,
+                    'title'   => $part['title'] ?? $lessonModel->title,
+                    'summary' => $part['subtitle'] ?? $lessonModel->summary,
                 ]);
 
                 if (($part['type'] ?? '') === 'lesson' && isset($part['items'])) {
-                    LessonItem::where('module_lesson_id', $lessonId)->delete();
+                    LessonLibraryItem::where('lesson_id', $lessonId)->delete();
                     foreach ($part['items'] as $i => $item) {
-                        LessonItem::create([
-                            'module_lesson_id' => $lessonId,
-                            'library_item_id'  => $item['library_item_id'] ?? null,
-                            'symbol'           => $item['symbol'] ?? null,
-                            'title'            => $item['title'] ?? 'Item ' . ($i + 1),
-                            'hand_type'        => $item['hand_type'] ?? '1 Tangan',
-                            'video_url'        => $item['video_url'] ?? null,
-                            'instruction'      => $item['instruction'] ?? $item['description'] ?? null,
-                            'tip'              => $item['una_tip'] ?? $item['tip'] ?? null,
-                            'sort_order'       => $i + 1,
-                        ]);
+                        if (! empty($item['library_item_id'])) {
+                            LessonLibraryItem::create([
+                                'lesson_id'       => $lessonId,
+                                'library_item_id' => $item['library_item_id'],
+                                'sort_order'      => $i + 1,
+                            ]);
+                        }
                     }
+
+                    $lessonModel->update([
+                        'content' => json_encode(['items' => $part['items']], JSON_UNESCAPED_UNICODE),
+                    ]);
                 } elseif (($part['type'] ?? '') === 'quiz' && isset($part['questions'])) {
-                    ModuleLessonQuestion::where('module_lesson_id', $lessonId)->delete();
+                    $quiz = Quiz::updateOrCreate(
+                        ['lesson_id' => $lessonId],
+                        [
+                            'module_id'     => $this->modulData['id'] ?? null,
+                            'title'         => $part['title'] ?? 'Kuis Evaluasi',
+                            'slug'          => Str::slug($part['title'] ?? 'kuis') . '-' . $lessonId,
+                            'passing_score' => $part['passing_score'] ?? 80,
+                            'status'        => 'published',
+                        ]
+                    );
+
+                    QuizQuestion::where('quiz_id', $quiz->id)->delete();
                     foreach ($part['questions'] as $i => $q) {
-                        ModuleLessonQuestion::create([
-                            'module_lesson_id' => $lessonId,
-                            'question'         => $q['question'] ?? 'Pertanyaan',
-                            'video_url'        => $q['video_url'] ?? $q['media_url'] ?? null,
-                            'symbol_hint'      => $q['symbol_hint'] ?? null,
-                            'options'          => array_values($q['options'] ?? []),
-                            'correct_index'    => (int) ($q['correct_index'] ?? 0),
-                            'explanation'      => $q['explanation'] ?? null,
-                            'sort_order'       => $i + 1,
+                        $qq = QuizQuestion::create([
+                            'quiz_id'       => $quiz->id,
+                            'question_text' => $q['question'] ?? 'Pertanyaan',
+                            'question_type' => 'multiple_choice',
+                            'points'        => 1,
+                            'sort_order'    => $i + 1,
+                            'explanation'   => $q['explanation'] ?? null,
                         ]);
+
+                        foreach (array_values($q['options'] ?? []) as $optIdx => $optText) {
+                            QuizOption::create([
+                                'question_id' => $qq->id,
+                                'option_text' => $optText,
+                                'is_correct'  => $optIdx === (int) ($q['correct_index'] ?? 0),
+                                'sort_order'  => $optIdx + 1,
+                            ]);
+                        }
                     }
+
+                    $lessonModel->update([
+                        'content' => json_encode(['questions' => $part['questions']], JSON_UNESCAPED_UNICODE),
+                    ]);
                 }
             }
         }
@@ -117,13 +139,12 @@ new #[Layout('layouts::admin')] #[Title('Isi Modul — Admin Signify')] class ex
         $slug = "{$baseSlug}-{$order}";
 
         $newLesson = ModuleLesson::create([
-            'module_id'     => $module->id,
-            'title'         => $this->partTitle,
-            'slug'          => $slug,
-            'type'          => $this->partType,
-            'xp_reward'     => $this->partXp,
-            'passing_score' => $this->partPassingScore,
-            'sort_order'    => $order,
+            'module_id'   => $module->id,
+            'title'       => $this->partTitle,
+            'slug'        => $slug,
+            'lesson_type' => $this->partType,
+            'sort_order'  => $order,
+            'status'      => 'published',
         ]);
 
         $this->loadModuleData();

@@ -6,22 +6,18 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ModuleLessonQuestion extends Model
+class LessonLibraryItem extends Model
 {
     use HasFactory;
+
+    protected $table = 'lesson_library_items';
 
     /**
      * @var list<string>
      */
     protected $fillable = [
-        'module_lesson_id',
+        'lesson_id',
         'library_item_id',
-        'question',
-        'video_url',
-        'symbol_hint',
-        'options',
-        'correct_index',
-        'explanation',
         'sort_order',
     ];
 
@@ -31,10 +27,8 @@ class ModuleLessonQuestion extends Model
     protected function casts(): array
     {
         return [
-            'module_lesson_id' => 'integer',
+            'lesson_id' => 'integer',
             'library_item_id' => 'integer',
-            'options' => 'array',
-            'correct_index' => 'integer',
             'sort_order' => 'integer',
         ];
     }
@@ -44,7 +38,7 @@ class ModuleLessonQuestion extends Model
      */
     public function lesson(): BelongsTo
     {
-        return $this->belongsTo(ModuleLesson::class, 'module_lesson_id');
+        return $this->belongsTo(ModuleLesson::class, 'lesson_id');
     }
 
     /**

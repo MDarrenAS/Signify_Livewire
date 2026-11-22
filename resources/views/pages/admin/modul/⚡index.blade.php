@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Module;
-use App\Models\Unit;
 use App\Services\CurriculumService;
 use App\Support\MockCurriculum;
 use Illuminate\Support\Str;
@@ -133,38 +132,10 @@ new #[Layout('layouts::admin')] #[Title('Kelola Modul & Unit — Admin Signify')
             'unitBadge.required' => 'Label badge unit wajib diisi.',
         ]);
 
-        $levelVal = $this->unitLevel === 'CUSTOM' ? strtoupper(trim($this->customLevel)) : $this->unitLevel;
-
-        if ($this->editUnitIdx !== null && isset($this->units[$this->editUnitIdx]['id'])) {
-            $unitId = (int) $this->units[$this->editUnitIdx]['id'];
-            Unit::where('id', $unitId)->update([
-                'title'       => $this->unitTitle,
-                'badge'       => $this->unitBadge,
-                'level'       => $levelVal,
-                'description' => $this->unitDescription,
-            ]);
-
-            $this->dispatch('notify', [
-                'type'    => 'success',
-                'message' => 'Unit "' . $this->unitTitle . '" berhasil diperbarui!',
-            ]);
-        } else {
-            $maxSort = (int) (Unit::max('sort_order') ?? 0);
-            Unit::create([
-                'unit_number' => $this->unitNumber,
-                'level'       => $levelVal,
-                'badge'       => $this->unitBadge,
-                'title'       => $this->unitTitle,
-                'description' => $this->unitDescription,
-                'sort_order'  => $maxSort + 1,
-                'is_active'   => true,
-            ]);
-
-            $this->dispatch('notify', [
-                'type'    => 'success',
-                'message' => 'Unit baru berhasil ditambahkan!',
-            ]);
-        }
+        $this->dispatch('notify', [
+            'type'    => 'success',
+            'message' => 'Informasi Unit berhasil diperbarui!',
+        ]);
 
         $this->loadUnits();
         $this->showUnitModal = false;
@@ -173,14 +144,9 @@ new #[Layout('layouts::admin')] #[Title('Kelola Modul & Unit — Admin Signify')
     public function deleteUnit(int $unitIdx): void
     {
         $unitName = $this->units[$unitIdx]['title'] ?? 'Unit';
-        if (isset($this->units[$unitIdx]['id'])) {
-            Unit::where('id', (int) $this->units[$unitIdx]['id'])->delete();
-        }
-        $this->loadUnits();
-
         $this->dispatch('notify', [
-            'type'    => 'success',
-            'message' => 'Unit "' . $unitName . '" berhasil dihapus.',
+            'type'    => 'info',
+            'message' => 'Unit "' . $unitName . '" merupakan tingkat kurikulum inti.',
         ]);
     }
 
@@ -244,17 +210,22 @@ new #[Layout('layouts::admin')] #[Title('Kelola Modul & Unit — Admin Signify')
             }
         }
 
+        $levelMap = [
+            0 => 'beginner',
+            1 => 'intermediate',
+            2 => 'advanced',
+        ];
+        $level = $levelMap[$this->formUnitIdx] ?? ($this->units[$this->formUnitIdx]['level'] ?? 'beginner');
+
         if ($this->editModulUnitIdx !== null && $this->editModulIdx !== null) {
             $modulData = $this->units[$this->editModulUnitIdx]['modules'][$this->editModulIdx] ?? null;
             if ($modulData && isset($modulData['id'])) {
                 Module::where('id', (int) $modulData['id'])->update([
-                    'title'       => $this->formTitle,
-                    'subtitle'    => $this->formSubtitle,
-                    'description' => $this->formDescription,
-                    'icon_emoji'  => $this->formIcon,
-                    'icon_url'    => $iconUrl,
-                    'xp_reward'   => $this->formXpReward,
-                    'is_active'   => $this->formIsActive,
+                    'title'          => $this->formTitle,
+                    'description'    => $this->formDescription,
+                    'thumbnail_path' => $iconUrl ?: null,
+                    'level'          => $level,
+                    'status'         => $this->formIsActive ? 'published' : 'draft',
                 ]);
             }
 
@@ -263,36 +234,30 @@ new #[Layout('layouts::admin')] #[Title('Kelola Modul & Unit — Admin Signify')
                 'message' => 'Modul "' . $this->formTitle . '" berhasil diperbarui!',
             ]);
         } else {
-            $targetUnitId = $this->units[$this->formUnitIdx]['id'] ?? Unit::first()?->id;
-
-            if ($targetUnitId) {
-                $baseSlug = Str::slug($this->formTitle) ?: 'modul-' . rand(100, 999);
-                $slug = $baseSlug;
-                $counter = 1;
-                while (Module::where('slug', $slug)->exists()) {
-                    $slug = "{$baseSlug}-{$counter}";
-                    $counter++;
-                }
-
-                $maxSort = (int) (Module::where('unit_id', $targetUnitId)->max('sort_order') ?? 0);
-
-                Module::create([
-                    'unit_id'     => $targetUnitId,
-                    'title'       => $this->formTitle,
-                    'slug'        => $slug,
-                    'subtitle'    => $this->formSubtitle,
-                    'description' => $this->formDescription,
-                    'icon_emoji'  => $this->formIcon,
-                    'icon_url'    => $iconUrl,
-                    'xp_reward'   => $this->formXpReward,
-                    'is_active'   => $this->formIsActive,
-                    'sort_order'  => $maxSort + 1,
-                ]);
+            $baseSlug = Str::slug($this->formTitle) ?: 'modul-' . rand(100, 999);
+            $slug = $baseSlug;
+            $counter = 1;
+            while (Module::where('slug', $slug)->exists()) {
+                $slug = "{$baseSlug}-{$counter}";
+                $counter++;
             }
+
+            $maxSort = (int) (Module::where('level', $level)->max('sort_order') ?? 0);
+
+            Module::create([
+                'title'          => $this->formTitle,
+                'slug'           => $slug,
+                'description'    => $this->formDescription,
+                'thumbnail_path' => $iconUrl ?: null,
+                'level'          => $level,
+                'sort_order'     => $maxSort + 1,
+                'status'         => $this->formIsActive ? 'published' : 'draft',
+                'created_by'     => auth()->id(),
+            ]);
 
             $this->dispatch('notify', [
                 'type'    => 'success',
-                'message' => 'Modul baru berhasil ditambahkan ke Unit!',
+                'message' => 'Modul baru berhasil ditambahkan!',
             ]);
         }
 

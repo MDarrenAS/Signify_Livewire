@@ -5,24 +5,26 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class LessonItem extends Model
+class QuizQuestion extends Model
 {
     use HasFactory;
+
+    protected $table = 'quiz_questions';
 
     /**
      * @var list<string>
      */
     protected $fillable = [
-        'module_lesson_id',
+        'quiz_id',
         'library_item_id',
-        'symbol',
-        'title',
-        'hand_type',
-        'video_url',
-        'instruction',
-        'tip',
+        'library_media_id',
+        'question_text',
+        'question_type',
+        'points',
         'sort_order',
+        'explanation',
     ];
 
     /**
@@ -31,18 +33,20 @@ class LessonItem extends Model
     protected function casts(): array
     {
         return [
-            'module_lesson_id' => 'integer',
+            'quiz_id' => 'integer',
             'library_item_id' => 'integer',
+            'library_media_id' => 'integer',
+            'points' => 'float',
             'sort_order' => 'integer',
         ];
     }
 
     /**
-     * @return BelongsTo<ModuleLesson, $this>
+     * @return BelongsTo<Quiz, $this>
      */
-    public function lesson(): BelongsTo
+    public function quiz(): BelongsTo
     {
-        return $this->belongsTo(ModuleLesson::class, 'module_lesson_id');
+        return $this->belongsTo(Quiz::class, 'quiz_id');
     }
 
     /**
@@ -54,16 +58,10 @@ class LessonItem extends Model
     }
 
     /**
-     * Resolve media URL, prioritizing Kamus media if linked.
+     * @return HasMany<QuizOption, $this>
      */
-    public function getResolvedVideoUrlAttribute(): ?string
+    public function options(): HasMany
     {
-        if ($this->libraryItem && $this->libraryItem->media->isNotEmpty()) {
-            $media = $this->libraryItem->media->first();
-
-            return $media->temporaryUrl();
-        }
-
-        return $this->video_url;
+        return $this->hasMany(QuizOption::class, 'question_id')->orderBy('sort_order')->orderBy('id');
     }
 }
