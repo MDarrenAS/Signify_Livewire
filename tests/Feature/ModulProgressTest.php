@@ -2,6 +2,7 @@
 
 use App\Models\User;
 use App\Models\UserModuleProgress;
+use Database\Seeders\CurriculumSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
@@ -35,6 +36,10 @@ beforeEach(function (): void {
             $table->unique(['user_id', 'modul_slug', 'part_slug'], 'user_modul_part_unique');
         });
     }
+
+    $this->seed(CurriculumSeeder::class);
+
+    $this->seed(\Database\Seeders\CurriculumSeeder::class);
 });
 
 it('persists module lesson completion in database', function (): void {

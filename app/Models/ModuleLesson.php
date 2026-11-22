@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Storage;
 
 class ModuleLesson extends Model
 {
@@ -137,11 +138,36 @@ class ModuleLesson extends Model
      */
     public function getItemsAttribute(): array
     {
-        // 1. If stored in content JSON, decode and return
+        // 1. If stored in content JSON, decode and return with fresh resolved media URLs
         if (! empty($this->content)) {
             $decoded = json_decode($this->content, true);
             if (is_array($decoded) && isset($decoded['items']) && is_array($decoded['items'])) {
-                return $decoded['items'];
+                $libraryItemIds = collect($decoded['items'])->pluck('library_item_id')->filter()->unique()->all();
+                $loadedLibraryItems = ! empty($libraryItemIds)
+                    ? LibraryItem::with('media')->whereIn('id', $libraryItemIds)->get()->keyBy('id')
+                    : collect();
+
+                return array_map(function (array $item) use ($loadedLibraryItems): array {
+                    $libId = $item['library_item_id'] ?? null;
+                    if ($libId && isset($loadedLibraryItems[$libId])) {
+                        $lib = $loadedLibraryItems[$libId];
+                        if ($lib->media->isNotEmpty()) {
+                            try {
+                                $item['video_url'] = $lib->media->first()->temporaryUrl();
+                            } catch (\Throwable) {
+                                $item['video_url'] = $lib->media->first()->storage_path ? '/storage/'.$lib->media->first()->storage_path : null;
+                            }
+
+                            return $item;
+                        }
+                    }
+
+                    if (! empty($item['video_url'])) {
+                        $item['video_url'] = $this->resolveMediaUrl($item['video_url']);
+                    }
+
+                    return $item;
+                }, $decoded['items']);
             }
         }
 
@@ -155,7 +181,7 @@ class ModuleLesson extends Model
                 try {
                     $mediaUrl = $lib->media->first()->temporaryUrl();
                 } catch (\Throwable) {
-                    $mediaUrl = $lib->media->first()->storage_path;
+                    $mediaUrl = $lib->media->first()->storage_path ? '/storage/'.$lib->media->first()->storage_path : null;
                 }
             }
 
@@ -175,6 +201,51 @@ class ModuleLesson extends Model
         }
 
         return $items;
+    }
+
+    /**
+     * Resolve a raw storage path, full S3 signed URL (possibly expired),
+     * or local storage URL into a fresh valid URL.
+     */
+    public function resolveMediaUrl(string $url): string
+    {
+        if (str_starts_with($url, '/storage/')) {
+            return $url;
+        }
+
+        // If it's a signed S3 URL or S3 path, extract the object path
+        $path = $url;
+        if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
+            $parsed = parse_url($url, PHP_URL_PATH);
+            if ($parsed) {
+                $bucket = config('filesystems.disks.s3.bucket', 'bisindo-media');
+                $marker = '/s3/'.$bucket.'/';
+                $pos = strpos($parsed, $marker);
+                if ($pos !== false) {
+                    $path = substr($parsed, $pos + strlen($marker));
+                } else {
+                    $objMarker = '/object/public/'.$bucket.'/';
+                    $objPos = strpos($parsed, $objMarker);
+                    if ($objPos !== false) {
+                        $path = substr($parsed, $objPos + strlen($objMarker));
+                    }
+                }
+            }
+        }
+
+        // If we have an S3 relative storage path (e.g. kamus/... or signs/...)
+        if (! str_starts_with($path, 'http://') && ! str_starts_with($path, 'https://') && ! str_starts_with($path, '/storage/')) {
+            try {
+                return Storage::disk('s3')->temporaryUrl(
+                    $path,
+                    now()->addMinutes((int) config('services.media.signed_url_minutes', 60))
+                );
+            } catch (\Throwable) {
+                return Storage::disk('s3')->url($path);
+            }
+        }
+
+        return $url;
     }
 
     /**

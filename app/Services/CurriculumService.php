@@ -109,7 +109,7 @@ class CurriculumService
 
                     $badgeText = $lesson->badge_text;
                     if ($isDone && $lesson->lesson_type === 'quiz' && $score !== null) {
-                        $badgeText = (int) $score >= 100 ? 'Skor 100 • Sempurna' : "Skor {$score}";
+                        $badgeText = (int) $score >= 100 ? 'Skor 100 • Sempurna' : "Skor {$score}%";
                     }
 
                     return [
@@ -141,7 +141,7 @@ class CurriculumService
                     'slug' => $modul->slug,
                     'title' => $modul->title,
                     'icon' => $modul->icon,
-                    'icon_url' => $modul->thumbnail_path,
+                    'icon_url' => $modul->icon_url,
                     'subtitle' => $modul->description,
                     'description' => $isLocked
                         ? ($modul->description ?? 'Terkunci • Selesaikan modul sebelumnya terlebih dahulu')
@@ -200,7 +200,7 @@ class CurriculumService
                     'slug' => $modul->slug,
                     'title' => $modul->title,
                     'icon' => $modul->icon,
-                    'icon_url' => $modul->thumbnail_path,
+                    'icon_url' => $modul->icon_url,
                     'subtitle' => $modul->description,
                     'description' => $modul->description,
                     'xp_reward' => 70,

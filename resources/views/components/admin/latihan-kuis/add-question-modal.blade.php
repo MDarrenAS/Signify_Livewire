@@ -94,7 +94,7 @@
                         @endif
                     </div>
                 @elseif (trim($mediaUrl) !== '')
-                    @php $isImageOrGif = preg_match('/\.(gif|png|jpe?g|webp|svg)$/i', $mediaUrl); @endphp
+                    @php $isImageOrGif = preg_match('/\.(gif|png|jpe?g|webp|svg)($|\?)/i', $mediaUrl); @endphp
                     <div class="rounded-xl overflow-hidden bg-[#18181B] aspect-video max-h-44 flex items-center justify-center p-2">
                         @if ($isImageOrGif)
                             <img src="{{ $mediaUrl }}" class="h-full object-contain" />
@@ -193,7 +193,7 @@
                                 @endif
                             </div>
                         @elseif (filled($optionMediaUrl))
-                            @php $isOptionImageUrl = preg_match('/\.(gif|png|jpe?g|webp|svg)$/i', $optionMediaUrl); @endphp
+                            @php $isOptionImageUrl = preg_match('/\.(gif|png|jpe?g|webp|svg)($|\?)/i', $optionMediaUrl); @endphp
                             <div class="rounded-xl overflow-hidden bg-[#18181B] aspect-video max-h-32 flex items-center justify-center p-2">
                                 @if ($isOptionImageUrl)
                                     <img src="{{ $optionMediaUrl }}" class="h-full object-contain" />

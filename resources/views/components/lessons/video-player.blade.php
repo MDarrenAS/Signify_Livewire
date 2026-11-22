@@ -1,29 +1,51 @@
 <div
-    x-data="videoPlayer()"
+    x-data="{
+        ...videoPlayer(),
+        get isImage() {
+            const url = (this.currentItem?.video_url || '').toLowerCase();
+            return /\.(gif|png|jpe?g|webp|svg)(\?.*)?$/i.test(url);
+        }
+    }"
     class="bg-white border-2 border-b-4 border-[#E4E4E7] rounded-2xl overflow-hidden"
 >
     <div
-        @click="togglePlay()"
-        class="relative aspect-video bg-[#18181B] flex items-center justify-center overflow-hidden cursor-pointer select-none"
+        @click="if (!isImage) togglePlay()"
+        class="relative aspect-video bg-[#18181B] flex items-center justify-center overflow-hidden select-none"
+        :class="{ 'cursor-pointer': !isImage }"
     >
-        <video
-            x-ref="player"
-            x-show="!videoError && currentItem.video_url"
-            :src="currentItem.video_url"
-            :loop="isLooping"
-            muted
-            playsinline
-            @loadedmetadata="duration = $event.target.duration || 4; $event.target.playbackRate = speed"
-            @timeupdate="currentTime = $event.target.currentTime"
-            @play="isPlaying = true"
-            @pause="isPlaying = false"
-            @ended="if (!isLooping) isPlaying = false"
-            x-on:error="videoError = true"
-            class="w-full h-full object-cover"
-        ></video>
+        {{-- Jika media berupa gambar (PNG, JPG, WEBP, GIF, SVG) --}}
+        <template x-if="isImage">
+            <img
+                x-show="!videoError && currentItem.video_url"
+                :src="currentItem.video_url"
+                :alt="currentItem.title"
+                x-on:error="videoError = true"
+                class="w-full h-full object-contain p-3"
+            />
+        </template>
 
+        {{-- Jika media berupa video (MP4, WEBM, MOV) --}}
+        <template x-if="!isImage">
+            <video
+                x-ref="player"
+                x-show="!videoError && currentItem.video_url"
+                :src="currentItem.video_url"
+                :loop="isLooping"
+                muted
+                playsinline
+                @loadedmetadata="duration = $event.target.duration || 4; $event.target.playbackRate = speed"
+                @timeupdate="currentTime = $event.target.currentTime"
+                @play="isPlaying = true"
+                @pause="isPlaying = false"
+                @ended="if (!isLooping) isPlaying = false"
+                x-on:error="videoError = true"
+                class="w-full h-full object-cover"
+            ></video>
+        </template>
+
+        {{-- Play button overlay (hanya untuk video saat dijeda) --}}
         <div
-            x-show="!videoError && currentItem.video_url && !isPlaying"
+            x-show="!isImage && !videoError && currentItem.video_url && !isPlaying"
             class="absolute inset-0 bg-black/25 flex items-center justify-center transition-opacity"
         >
             <div class="w-16 h-16 rounded-2xl bg-[#F9B92F] border-2 border-b-4 border-[#C98A06] flex items-center justify-center text-[#1C1C1E] shadow-lg">
@@ -33,6 +55,7 @@
             </div>
         </div>
 
+        {{-- Fallback jika error atau media kosong --}}
         <div
             x-show="videoError || !currentItem.video_url"
             class="w-full h-full bg-[#F4F4F5] flex flex-col items-center justify-center gap-2 p-6 text-center"
@@ -45,7 +68,8 @@
         </div>
     </div>
 
-    <div class="p-3.5 sm:p-4 bg-white border-t-2 border-[#E4E4E7] flex flex-wrap items-center justify-between gap-3">
+    {{-- Controls bar video --}}
+    <div x-show="!isImage" class="p-3.5 sm:p-4 bg-white border-t-2 border-[#E4E4E7] flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2.5 flex-1 min-w-[180px]">
             <button
                 type="button"
@@ -100,5 +124,14 @@
                 Loop
             </button>
         </div>
+    </div>
+
+    {{-- Keterangan bar jika media berupa gambar --}}
+    <div x-show="isImage" class="p-3.5 sm:p-4 bg-white border-t-2 border-[#E4E4E7] flex items-center justify-between">
+        <span class="text-xs font-bold text-[#71717A] flex items-center gap-1.5">
+            <span>🖼️</span>
+            <span>Gambar Peraga Isyarat</span>
+        </span>
+        <span class="text-xs font-extrabold text-[#C98A06]" x-text="currentItem.title"></span>
     </div>
 </div>

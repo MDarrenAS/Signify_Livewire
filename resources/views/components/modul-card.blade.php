@@ -67,8 +67,15 @@
     {{-- HEADER KARTU MODUL --}}
     <div class="p-4 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-5">
         <div class="flex items-start sm:items-center gap-4 flex-1 min-w-0">
-            {{-- Kotak Ikon --}}
-            @if ($status === 'completed')
+            {{-- Kotak Ikon / Gambar Thumbnail Modul --}}
+            @if (!empty($modul['icon_url']))
+                <div class="relative w-13 h-13 sm:w-14 sm:h-14 shrink-0 rounded-[14px] border-2 {{ $status === 'completed' ? 'border-[#22B05B]' : ($status === 'in_progress' ? 'border-[#F9B92F]' : 'border-[#E4E4E7]') }} overflow-hidden flex items-center justify-center bg-[#FFF8E6] transition-transform duration-200 group-hover/card:scale-105">
+                    <img src="{{ $modul['icon_url'] }}" alt="{{ $modul['title'] ?? 'Modul' }}" class="w-full h-full object-cover" />
+                    @if ($status === 'completed')
+                        <span class="absolute -bottom-1 -right-1 w-[18px] h-[18px] bg-[#22B05B] border-2 border-white rounded-full flex items-center justify-center text-white text-[10px] font-bold leading-none">✓</span>
+                    @endif
+                </div>
+            @elseif ($status === 'completed')
                 <div class="relative w-13 h-13 sm:w-14 sm:h-14 shrink-0 bg-[#E9F9EF] border-2 border-[#22B05B] border-b-[3px] border-b-[#15803D] rounded-[14px] flex items-center justify-center transition-transform duration-200 group-hover/card:scale-105 group-hover/card:-rotate-2">
                     <span class="text-base font-extrabold text-[#15803D] tracking-tight select-none">{{ $modul['visual_content'] ?? 'A-Z' }}</span>
                     <span class="absolute -bottom-1.5 -right-1.5 w-[18px] h-[18px] bg-[#22B05B] border-2 border-white rounded-full flex items-center justify-center text-white text-[10px] font-bold leading-none">✓</span>

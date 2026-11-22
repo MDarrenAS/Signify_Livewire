@@ -211,7 +211,7 @@ new #[Title('Tantangan Kuis BISINDO')] class extends Component
             $totalQuestions = $this->quiz->questions->count();
             $progressPercent = $totalQuestions > 0 ? round((($currentIndex + 1) / $totalQuestions) * 100) : 0;
             $media = $q?->getEffectiveMediaUrl();
-            $isImgOrGif = $media ? preg_match('/\.(gif|png|jpe?g|webp|svg)$/i', $media) : false;
+            $isImgOrGif = $media ? preg_match('/\.(gif|png|jpe?g|webp|svg)($|\?)/i', $media) : false;
         @endphp
 
         {{-- Progress Bar --}}
@@ -264,7 +264,7 @@ new #[Title('Tantangan Kuis BISINDO')] class extends Component
                         $isSelected = $selectedOptionId === $opt->id;
                         $optText = $opt->getEffectiveText();
                         $optMedia = $opt->getEffectiveMediaUrl();
-                        $optIsImg = $optMedia ? preg_match('/\.(gif|png|jpe?g|webp|svg)$/i', $optMedia) : false;
+                        $optIsImg = $optMedia ? preg_match('/\.(gif|png|jpe?g|webp|svg)($|\?)/i', $optMedia) : false;
 
                         // State styling saat jawaban dicek
                         $borderClass = 'border-[#E4E4E7] hover:border-[#F9B92F] bg-white';

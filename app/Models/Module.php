@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 class Module extends Model
 {
@@ -97,7 +98,23 @@ class Module extends Model
 
     public function getIconUrlAttribute(): ?string
     {
-        return $this->thumbnail_path;
+        $raw = $this->thumbnail_path;
+        if (blank($raw)) {
+            return null;
+        }
+
+        if (str_starts_with($raw, 'http://') || str_starts_with($raw, 'https://') || str_starts_with($raw, '/storage/')) {
+            return $raw;
+        }
+
+        try {
+            return Storage::disk('s3')->temporaryUrl(
+                $raw,
+                now()->addMinutes((int) config('services.media.signed_url_minutes', 60))
+            );
+        } catch (\Throwable) {
+            return Storage::disk('s3')->url($raw);
+        }
     }
 
     public function getXpRewardAttribute(): int

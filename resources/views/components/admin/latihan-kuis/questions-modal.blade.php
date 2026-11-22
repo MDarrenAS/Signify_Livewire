@@ -46,7 +46,7 @@
                         $qText = is_object($q) ? $q->question_text : ($q['question'] ?? '');
                         $qType = is_object($q) ? $q->question_type : ($q['question_type'] ?? 'sign_to_word');
                         $media = is_object($q) ? $q->getEffectiveMediaUrl() : ($q['video_url'] ?? '');
-                        $isImgOrGif = $media ? preg_match('/\.(gif|png|jpe?g|webp|svg)$/i', $media) : false;
+                        $isImgOrGif = $media ? preg_match('/\.(gif|png|jpe?g|webp|svg)($|\?)/i', $media) : false;
                         $options = is_object($q) ? $q->options : ($q['options'] ?? []);
                     @endphp
                     <div class="p-4 rounded-2xl border-2 border-[#E4E4E7] bg-white hover:border-[#F9B92F] transition-all space-y-2">

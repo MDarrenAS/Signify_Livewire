@@ -111,7 +111,14 @@ new class extends Component
         @forelse ($part['questions'] ?? [] as $qIdx => $q)
             @php
                 $media = $q['video_url'] ?? '';
-                $isImageOrGif = preg_match('/\.(gif|png|jpe?g|webp|svg)$/i', $media);
+                if ($media && ! str_starts_with($media, 'http') && ! str_starts_with($media, '/storage/')) {
+                    try {
+                        $media = \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($media, now()->addMinutes(60));
+                    } catch (\Throwable) {
+                        $media = \Illuminate\Support\Facades\Storage::disk('s3')->url($media);
+                    }
+                }
+                $isImageOrGif = preg_match('/\.(gif|png|jpe?g|webp|svg)($|\?)/i', $media);
             @endphp
             <div class="p-5 flex flex-col sm:flex-row sm:items-start justify-between gap-4 hover:bg-zinc-50/50 transition-colors">
                 <div class="flex items-start gap-4 flex-1">
@@ -225,7 +232,7 @@ new class extends Component
                         @endif
                     </div>
                 @elseif (trim($videoUrl) !== '')
-                    @php $isImageOrGif = preg_match('/\.(gif|png|jpe?g|webp|svg)$/i', $videoUrl); @endphp
+                    @php $isImageOrGif = preg_match('/\.(gif|png|jpe?g|webp|svg)($|\?)/i', $videoUrl); @endphp
                     <div class="rounded-xl overflow-hidden bg-[#18181B] aspect-video max-h-44 flex items-center justify-center p-2">
                         @if ($isImageOrGif)
                             <img src="{{ $videoUrl }}" class="h-full object-contain" />
