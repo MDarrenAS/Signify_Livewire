@@ -1,41 +1,17 @@
 <?php
 
-use App\Support\MockCurriculum;
+use App\Services\AdminDashboardService;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Layout('layouts::admin')] #[Title('Dashboard Admin — Signify')] class extends Component
 {
-    public array $units = [];
-    public array $packages = [];
-    public array $dictionary = [];
-
-    public function mount(): void
+    #[Computed]
+    public function stats(): array
     {
-        $this->units      = session('admin_custom_units', MockCurriculum::getUnits());
-        $this->packages   = session('admin_quiz_packages', [
-            ['is_active' => true],
-            ['is_active' => true],
-            ['is_active' => false],
-        ]);
-        $this->dictionary = session('admin_dictionary_entries', [1, 2, 3, 4, 5]);
-    }
-
-    public function getStatsProperty(): array
-    {
-        $modules = collect($this->units)->flatMap(fn ($u) => $u['modules'] ?? []);
-        $signs   = $modules->flatMap(fn ($m) => $m['parts'] ?? [])
-            ->where('type', '!=', 'quiz')
-            ->flatMap(fn ($p) => $p['items'] ?? []);
-
-        return [
-            'units'      => count($this->units),
-            'modules'    => $modules->count(),
-            'signs'      => max($signs->count(), count($this->dictionary)),
-            'quizzes'    => count($this->packages),
-            'users'      => 128,
-        ];
+        return app(AdminDashboardService::class)->getStats();
     }
 };
 ?>
@@ -100,7 +76,7 @@ new #[Layout('layouts::admin')] #[Title('Dashboard Admin — Signify')] class ex
                 </span>
             </div>
             <p class="text-3xl font-extrabold text-[#1C1C1E] mt-3 tracking-tight">{{ $this->stats['users'] }}</p>
-            <p class="text-xs font-semibold text-[#15803D] mt-1">+14 pengguna minggu ini</p>
+            <p class="text-xs font-semibold text-[#15803D] mt-1">+{{ $this->stats['new_users_this_week'] }} pengguna minggu ini</p>
         </a>
     </div>
 

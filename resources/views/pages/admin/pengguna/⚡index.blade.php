@@ -1,52 +1,35 @@
 <?php
 
+use App\Services\AdminDashboardService;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 new #[Layout('layouts::admin')] #[Title('Pengguna & Progres — Admin Signify')] class extends Component
 {
+    use WithPagination;
+
     public string $search = '';
     public string $statusFilter = 'all';
 
-    public array $users = [
-        [
-            'name'             => 'Nadia Putri',
-            'email'            => 'nadia@example.com',
-            'level'            => 'Tingkat 3 • Mahir',
-            'total_xp'         => 340,
-            'completed_parts'  => 14,
-            'status'           => 'Aktif',
-            'last_active'      => '10 menit yang lalu',
-        ],
-        [
-            'name'             => 'Rizky Pratama',
-            'email'            => 'rizky@example.com',
-            'level'            => 'Tingkat 2 • Menengah',
-            'total_xp'         => 210,
-            'completed_parts'  => 8,
-            'status'           => 'Aktif',
-            'last_active'      => '1 jam yang lalu',
-        ],
-        [
-            'name'             => 'Aulia Zahra',
-            'email'            => 'aulia@example.com',
-            'level'            => 'Tingkat 1 • Pemula',
-            'total_xp'         => 90,
-            'completed_parts'  => 4,
-            'status'           => 'Aktif',
-            'last_active'      => 'Kemarin',
-        ],
-        [
-            'name'             => 'Budi Santoso',
-            'email'            => 'budi@example.com',
-            'level'            => 'Tingkat 1 • Pemula',
-            'total_xp'         => 30,
-            'completed_parts'  => 1,
-            'status'           => 'Nonaktif',
-            'last_active'      => '5 hari yang lalu',
-        ],
-    ];
+    #[Computed]
+    public function users(): LengthAwarePaginator
+    {
+        return app(AdminDashboardService::class)->getUsers($this->search, $this->statusFilter);
+    }
+
+    public function updatingSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingStatusFilter(): void
+    {
+        $this->resetPage();
+    }
 };
 ?>
 
@@ -95,20 +78,8 @@ new #[Layout('layouts::admin')] #[Title('Pengguna & Progres — Admin Signify')]
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-[#E4E4E7] text-sm">
-                    @php
-                        $filtered = array_filter($users, function ($u) {
-                            $matchSearch = empty($this->search)
-                                || str_contains(strtolower($u['name'] ?? ''), strtolower($this->search))
-                                || str_contains(strtolower($u['email'] ?? ''), strtolower($this->search));
-
-                            $matchStatus = $this->statusFilter === 'all' || ($u['status'] ?? '') === $this->statusFilter;
-
-                            return $matchSearch && $matchStatus;
-                        });
-                    @endphp
-
-                    @forelse ($filtered as $u)
-                        <tr class="hover:bg-zinc-50/70 transition-colors">
+                    @forelse ($this->users as $u)
+                        <tr wire:key="admin-user-{{ $u['id'] }}" class="hover:bg-zinc-50/70 transition-colors">
                             <td class="py-4 px-5">
                                 <div class="flex items-center gap-3">
                                     <div class="w-10 h-10 rounded-xl bg-[#FFF8E6] border-2 border-[#F9B92F] flex items-center justify-center font-extrabold text-xs text-[#C98A06] shrink-0">
@@ -147,6 +118,9 @@ new #[Layout('layouts::admin')] #[Title('Pengguna & Progres — Admin Signify')]
                     @endforelse
                 </tbody>
             </table>
+        </div>
+        <div class="border-t border-[#E4E4E7] px-5 py-3">
+            {{ $this->users->links() }}
         </div>
     </div>
 </div>

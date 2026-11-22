@@ -27,6 +27,11 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string|null $remember_token
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property-read float|null $quiz_points
+ * @property-read int $completed_parts
+ * @property-read string|null $last_lesson_accessed_at
+ * @property-read string|null $last_lesson_completed_at
+ * @property-read string|null $last_quiz_submitted_at
  */
 #[Fillable(['name', 'email', 'password', 'role', 'is_active'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
@@ -54,11 +59,25 @@ class User extends Authenticatable implements PasskeyUser
         return $this->role === 'admin' && $this->is_active;
     }
 
+    /**
+     * @return HasMany<QuizAttempt, $this>
+     */
     public function quizAttempts(): HasMany
     {
         return $this->hasMany(QuizAttempt::class);
     }
 
+    /**
+     * @return HasMany<UserLessonProgress, $this>
+     */
+    public function lessonProgress(): HasMany
+    {
+        return $this->hasMany(UserLessonProgress::class);
+    }
+
+    /**
+     * @return HasMany<UserModuleProgress, $this>
+     */
     public function moduleProgress(): HasMany
     {
         return $this->hasMany(UserModuleProgress::class);
