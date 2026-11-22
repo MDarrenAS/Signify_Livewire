@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Unit;
 use App\Models\User;
 use Database\Seeders\CurriculumSeeder;
 use Livewire\Livewire;
@@ -69,35 +68,11 @@ test('admin can view admin modul show page', function () {
     $response->assertSee('Huruf Vokal');
 });
 
-test('admin can create a new unit and persist to database', function () {
+test('admin can create a new modul and persist to database matching supabase schema', function () {
     $admin = User::factory()->create([
         'role' => 'admin',
         'is_active' => true,
     ]);
-
-    Livewire::actingAs($admin)
-        ->test('pages::admin.modul.index')
-        ->set('unitNumber', 2)
-        ->set('unitLevel', 'TINGKAT MENENGAH')
-        ->set('unitBadge', 'UNIT 2 • TINGKAT MENENGAH')
-        ->set('unitTitle', 'Percakapan Lingkungan Kerja')
-        ->set('unitDescription', 'Materi isyarat interaksi profesional.')
-        ->call('saveUnit')
-        ->assertHasNoErrors();
-
-    $this->assertDatabaseHas('units', [
-        'title' => 'Percakapan Lingkungan Kerja',
-        'unit_number' => 2,
-    ]);
-});
-
-test('admin can create a new modul and persist to database', function () {
-    $admin = User::factory()->create([
-        'role' => 'admin',
-        'is_active' => true,
-    ]);
-
-    $unit = Unit::first();
 
     Livewire::actingAs($admin)
         ->test('pages::admin.modul.index')
@@ -112,8 +87,9 @@ test('admin can create a new modul and persist to database', function () {
         ->assertHasNoErrors();
 
     $this->assertDatabaseHas('modules', [
-        'unit_id' => $unit->id,
         'title' => 'Warna dan Bentuk',
+        'level' => 'beginner',
+        'status' => 'published',
     ]);
 });
 

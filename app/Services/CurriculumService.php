@@ -4,12 +4,43 @@ namespace App\Services;
 
 use App\Models\Module;
 use App\Models\ModuleLesson;
-use App\Models\Unit;
 use App\Models\User;
 use App\Models\UserLessonProgress;
 
 class CurriculumService
 {
+    /**
+     * Predefined unit / level metadata.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    protected array $levels = [
+        'beginner' => [
+            'id' => 1,
+            'unit_number' => 1,
+            'level' => 'beginner',
+            'badge' => 'UNIT 1 • TINGKAT DASAR',
+            'title' => 'Pondasi Komunikasi BISINDO',
+            'description' => 'Kuasai abjad visual, angka dasar, dan sapaan penting untuk memulai percakapan.',
+        ],
+        'intermediate' => [
+            'id' => 2,
+            'unit_number' => 2,
+            'level' => 'intermediate',
+            'badge' => 'UNIT 2 • TINGKAT MENENGAH',
+            'title' => 'Percakapan Sehari-hari',
+            'description' => 'Perluas kosakata untuk komunikasi di lingkungan sosial dan publik.',
+        ],
+        'advanced' => [
+            'id' => 3,
+            'unit_number' => 3,
+            'level' => 'advanced',
+            'badge' => 'UNIT 3 • TINGKAT MAHIR',
+            'title' => 'Kefasihan & Kecepatan Berisyarat',
+            'description' => 'Tingkatkan akurasi ekspresi wajah, struktur kalimat, dan kecepatan gerak.',
+        ],
+    ];
+
     /**
      * Get units structured for the user-facing learning pages with progress computed.
      *
@@ -17,11 +48,12 @@ class CurriculumService
      */
     public function getUnitsForUser(?User $user): array
     {
-        $units = Unit::query()
-            ->where('is_active', true)
+        $modules = Module::query()
+            ->where('status', '!=', 'archived')
             ->with([
-                'modules' => fn ($query) => $query->where('is_active', true)->orderBy('sort_order')->orderBy('id'),
-                'modules.lessons' => fn ($query) => $query->orderBy('sort_order')->orderBy('id'),
+                'lessons' => fn ($query) => $query->where('status', '!=', 'archived')->orderBy('sort_order')->orderBy('id'),
+                'lessons.libraryItems.media',
+                'lessons.quiz.questions.options',
             ])
             ->orderBy('sort_order')
             ->orderBy('id')
@@ -35,23 +67,25 @@ class CurriculumService
                 ->where('user_id', $user->id)
                 ->get();
 
-            $completedLessonIds = $userProgress->pluck('module_lesson_id')->all();
-            $quizScores = $userProgress->pluck('score', 'module_lesson_id')->all();
+            $completedLessonIds = $userProgress->where('status', 'completed')->pluck('lesson_id')->all();
+            $quizScores = $userProgress->pluck('progress_percent', 'lesson_id')->all();
         }
 
         $sessionCompletedKeys = (array) session('completed_parts', []);
         $sessionQuizScores = (array) session('quiz_scores', []);
 
+        $grouped = $modules->groupBy(fn (Module $m) => strtolower($m->level ?? 'beginner'));
+
+        $units = [];
         $prevModulDone = true;
 
-        return $units->map(function (Unit $unit) use (
-            $completedLessonIds,
-            $quizScores,
-            $sessionCompletedKeys,
-            $sessionQuizScores,
-            &$prevModulDone
-        ) {
-            $modules = $unit->modules->map(function (Module $modul) use (
+        foreach ($this->levels as $levelKey => $meta) {
+            $levelModules = $grouped->get($levelKey, collect());
+            if ($levelModules->isEmpty()) {
+                continue;
+            }
+
+            $mappedModules = $levelModules->map(function (Module $modul) use (
                 $completedLessonIds,
                 $quizScores,
                 $sessionCompletedKeys,
@@ -74,14 +108,14 @@ class CurriculumService
                     $score = $quizScores[$lesson->id] ?? ($sessionQuizScores[$sessionKey] ?? null);
 
                     $badgeText = $lesson->badge_text;
-                    if ($isDone && $lesson->type === 'quiz' && $score !== null) {
+                    if ($isDone && $lesson->lesson_type === 'quiz' && $score !== null) {
                         $badgeText = (int) $score >= 100 ? 'Skor 100 • Sempurna' : "Skor {$score}";
                     }
 
                     return [
                         'id' => $lesson->id,
                         'order' => $lesson->sort_order,
-                        'type' => $lesson->type,
+                        'type' => $lesson->lesson_type,
                         'slug' => $lesson->slug,
                         'title' => $lesson->title,
                         'subtitle' => $lesson->subtitle,
@@ -93,7 +127,7 @@ class CurriculumService
                     ];
                 });
 
-                $wasLocked = ! $modul->is_active;
+                $wasLocked = $modul->status !== 'published';
                 $isLocked = $wasLocked || ! $prevModulDone;
                 $totalParts = $parts->count();
                 $doneCount = $parts->where('status', 'completed')->count();
@@ -106,15 +140,15 @@ class CurriculumService
                     'id' => $modul->id,
                     'slug' => $modul->slug,
                     'title' => $modul->title,
-                    'icon' => $modul->icon_emoji ?? '🤟',
-                    'icon_url' => $modul->icon_url,
-                    'subtitle' => $modul->subtitle,
+                    'icon' => $modul->icon,
+                    'icon_url' => $modul->thumbnail_path,
+                    'subtitle' => $modul->description,
                     'description' => $isLocked
                         ? ($modul->description ?? 'Terkunci • Selesaikan modul sebelumnya terlebih dahulu')
                         : ($modul->description ?? 'Kuasai materi '.$modul->title.' dalam isyarat BISINDO.'),
-                    'xp_reward' => $modul->xp_reward,
-                    'visual_content' => $modul->visual_content,
-                    'tag' => (! $isLocked && ! $isModulDone) ? ($modul->tag ?? 'SEDANG AKTIF') : ($modul->tag ?? null),
+                    'xp_reward' => 70,
+                    'visual_content' => $modul->title,
+                    'tag' => (! $isLocked && ! $isModulDone) ? 'SEDANG AKTIF' : null,
                     'status' => $isLocked ? 'locked' : ($isModulDone ? 'completed' : null),
                     'total_parts' => $totalParts,
                     'is_expanded' => $isInProgress || (! $isLocked && ! $isModulDone),
@@ -122,16 +156,19 @@ class CurriculumService
                 ];
             });
 
-            return [
-                'id' => $unit->id,
-                'unit_number' => $unit->unit_number,
-                'badge' => $unit->badge ?? ('UNIT '.$unit->unit_number.' • '.$unit->level),
-                'title' => $unit->title,
-                'description' => $unit->description,
-                'is_locked' => $modules->isNotEmpty() && $modules->every(fn (array $m) => ($m['status'] ?? '') === 'locked'),
-                'modules' => $modules->all(),
+            $units[] = [
+                'id' => $meta['id'],
+                'unit_number' => $meta['unit_number'],
+                'level' => $meta['level'],
+                'badge' => $meta['badge'],
+                'title' => $meta['title'],
+                'description' => $meta['description'],
+                'is_locked' => $mappedModules->isNotEmpty() && $mappedModules->every(fn (array $m) => ($m['status'] ?? '') === 'locked'),
+                'modules' => $mappedModules->all(),
             ];
-        })->all();
+        }
+
+        return $units;
     }
 
     /**
@@ -141,74 +178,79 @@ class CurriculumService
      */
     public function getUnitsForAdmin(): array
     {
-        $units = Unit::query()
+        $modules = Module::query()
             ->with([
-                'modules' => fn ($query) => $query->orderBy('sort_order')->orderBy('id'),
-                'modules.lessons' => fn ($query) => $query->orderBy('sort_order')->orderBy('id'),
+                'lessons' => fn ($query) => $query->orderBy('sort_order')->orderBy('id'),
+                'lessons.libraryItems.media',
+                'lessons.quiz.questions.options',
             ])
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
 
-        return $units->map(function (Unit $unit) {
-            $modules = $unit->modules->map(function (Module $modul) {
-                $parts = $modul->lessons->map(function (ModuleLesson $lesson) {
-                    return [
-                        'id' => $lesson->id,
-                        'order' => $lesson->sort_order,
-                        'type' => $lesson->type,
-                        'slug' => $lesson->slug,
-                        'title' => $lesson->title,
-                        'subtitle' => $lesson->subtitle,
-                        'category' => $lesson->category,
-                        'badge_text' => $lesson->badge_text,
-                        'status' => 'available',
-                        'xp_reward' => $lesson->xp_reward,
-                        'passing_score' => $lesson->passing_score,
-                    ];
-                });
+        $grouped = $modules->groupBy(fn (Module $m) => strtolower($m->level ?? 'beginner'));
 
+        $units = [];
+        foreach ($this->levels as $levelKey => $meta) {
+            $levelModules = $grouped->get($levelKey, collect());
+
+            $mappedModules = $levelModules->map(function (Module $modul) {
                 return [
                     'id' => $modul->id,
                     'slug' => $modul->slug,
                     'title' => $modul->title,
-                    'subtitle' => $modul->subtitle,
+                    'icon' => $modul->icon,
+                    'icon_url' => $modul->thumbnail_path,
+                    'subtitle' => $modul->description,
                     'description' => $modul->description,
-                    'icon' => $modul->icon_emoji ?? '🤟',
-                    'icon_url' => $modul->icon_url ?? '',
-                    'xp_reward' => $modul->xp_reward,
-                    'status' => $modul->is_active ? 'active' : 'locked',
-                    'total_parts' => $parts->count(),
-                    'parts' => $parts->all(),
+                    'xp_reward' => 70,
+                    'level' => $modul->level,
+                    'status' => $modul->status === 'published' ? 'published' : 'draft',
+                    'is_active' => $modul->status === 'published',
+                    'total_parts' => $modul->lessons->count(),
+                    'parts' => $modul->lessons->map(fn (ModuleLesson $l) => [
+                        'id' => $l->id,
+                        'order' => $l->sort_order,
+                        'type' => $l->lesson_type,
+                        'slug' => $l->slug,
+                        'title' => $l->title,
+                        'subtitle' => $l->subtitle,
+                        'category' => $l->category,
+                        'badge_text' => $l->badge_text,
+                        'status' => $l->status,
+                        'xp_reward' => $l->xp_reward,
+                        'passing_score' => $l->passing_score,
+                    ])->all(),
                 ];
             });
 
-            return [
-                'id' => $unit->id,
-                'unit_number' => $unit->unit_number,
-                'badge' => $unit->badge,
-                'title' => $unit->title,
-                'description' => $unit->description,
-                'is_locked' => ! $unit->is_active,
-                'modules' => $modules->all(),
+            $units[] = [
+                'id' => $meta['id'],
+                'unit_number' => $meta['unit_number'],
+                'level' => $meta['level'],
+                'badge' => $meta['badge'],
+                'title' => $meta['title'],
+                'description' => $meta['description'],
+                'modules' => $mappedModules->all(),
             ];
-        })->all();
+        }
+
+        return $units;
     }
 
     /**
-     * Get module with parts, items, and questions for editing in admin.
+     * Get a single module with its lessons, items, and questions.
      *
      * @return array<string, mixed>|null
      */
-    public function getModuleWithParts(string $modulSlug): ?array
+    public function getModuleWithParts(string $slug): ?array
     {
         $module = Module::query()
-            ->where('slug', $modulSlug)
+            ->where('slug', $slug)
             ->with([
-                'lessons' => fn ($query) => $query->orderBy('sort_order')->orderBy('id'),
-                'lessons.items' => fn ($query) => $query->orderBy('sort_order')->orderBy('id'),
-                'lessons.items.libraryItem.media',
-                'lessons.questions' => fn ($query) => $query->orderBy('sort_order')->orderBy('id'),
+                'lessons' => fn ($q) => $q->orderBy('sort_order')->orderBy('id'),
+                'lessons.libraryItems.media',
+                'lessons.quiz.questions.options',
             ])
             ->first();
 
@@ -216,92 +258,32 @@ class CurriculumService
             return null;
         }
 
-        $parts = $module->lessons->map(function (ModuleLesson $lesson) {
-            $items = $lesson->items->map(function ($item) {
-                $videoUrl = $item->video_url;
-                if ($item->libraryItem && $item->libraryItem->media->isNotEmpty()) {
-                    try {
-                        $videoUrl = $item->libraryItem->media->first()->temporaryUrl();
-                    } catch (\Throwable) {
-                        $videoUrl = $item->video_url;
-                    }
-                }
-
-                return [
-                    'id' => $item->id,
-                    'library_item_id' => $item->library_item_id,
-                    'order' => $item->sort_order,
-                    'symbol' => $item->symbol,
-                    'title' => $item->title,
-                    'hand_type' => $item->hand_type,
-                    'video_url' => $videoUrl,
-                    'instruction' => $item->instruction ?? $item->libraryItem?->movement_description,
-                    'description' => $item->instruction ?? $item->libraryItem?->movement_description,
-                    'una_tip' => $item->tip,
-                    'tip' => $item->tip,
-                ];
-            })->all();
-
-            $questions = $lesson->questions->map(function ($q) {
-                return [
-                    'id' => $q->id,
-                    'order' => $q->sort_order,
-                    'question' => $q->question,
-                    'video_url' => $q->video_url,
-                    'media_url' => $q->video_url,
-                    'symbol_hint' => $q->symbol_hint,
-                    'options' => $q->options ?? [],
-                    'correct_index' => $q->correct_index,
-                    'explanation' => $q->explanation,
-                ];
-            })->all();
-
-            return [
-                'id' => $lesson->id,
-                'slug' => $lesson->slug,
-                'order' => $lesson->sort_order,
-                'type' => $lesson->type,
-                'title' => $lesson->title,
-                'subtitle' => $lesson->subtitle,
-                'category' => $lesson->category,
-                'badge_text' => $lesson->badge_text,
-                'xp_reward' => $lesson->xp_reward,
-                'passing_score' => $lesson->passing_score,
-                'items' => $items,
-                'questions' => $questions,
-            ];
-        })->all();
-
         return [
             'id' => $module->id,
-            'unit_id' => $module->unit_id,
-            'slug' => $module->slug,
             'title' => $module->title,
-            'subtitle' => $module->subtitle,
+            'slug' => $module->slug,
             'description' => $module->description,
-            'icon' => $module->icon_emoji ?? '🤟',
-            'icon_url' => $module->icon_url ?? '',
-            'xp_reward' => $module->xp_reward,
-            'status' => $module->is_active ? 'active' : 'locked',
-            'parts' => $parts,
+            'level' => $module->level,
+            'icon' => $module->icon,
+            'icon_url' => $module->thumbnail_path,
+            'xp_reward' => 70,
+            'status' => $module->status,
+            'parts' => $module->lessons->map(function (ModuleLesson $lesson) {
+                return [
+                    'id' => $lesson->id,
+                    'order' => $lesson->sort_order,
+                    'type' => $lesson->lesson_type,
+                    'slug' => $lesson->slug,
+                    'title' => $lesson->title,
+                    'subtitle' => $lesson->subtitle,
+                    'category' => $lesson->category,
+                    'badge_text' => $lesson->badge_text,
+                    'xp_reward' => $lesson->xp_reward,
+                    'passing_score' => $lesson->passing_score,
+                    'items' => $lesson->items,
+                    'questions' => $lesson->questions,
+                ];
+            })->all(),
         ];
-    }
-
-    /**
-     * Record lesson completion and calculate score for user.
-     */
-    public function recordLessonProgress(User $user, ModuleLesson $lesson, ?int $score = null): UserLessonProgress
-    {
-        return UserLessonProgress::updateOrCreate(
-            [
-                'user_id' => $user->id,
-                'module_lesson_id' => $lesson->id,
-            ],
-            [
-                'status' => 'completed',
-                'score' => $score !== null ? max($score, (int) optional(UserLessonProgress::where('user_id', $user->id)->where('module_lesson_id', $lesson->id)->first())->score) : null,
-                'completed_at' => now(),
-            ]
-        );
     }
 }

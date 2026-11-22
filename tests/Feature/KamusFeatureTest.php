@@ -16,64 +16,72 @@ use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 beforeEach(function (): void {
-    Schema::create('library_categories', function (Blueprint $table): void {
-        $table->id();
-        $table->string('name');
-        $table->string('slug')->unique();
-        $table->text('description')->nullable();
-        $table->unsignedInteger('sort_order')->default(0);
-        $table->string('status')->default('published');
-        $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
-        $table->timestampsTz();
-    });
+    if (! Schema::hasTable('library_categories')) {
+        Schema::create('library_categories', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->text('description')->nullable();
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->string('status')->default('published');
+            $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestampsTz();
+        });
+    }
 
-    Schema::create('library_items', function (Blueprint $table): void {
-        $table->id();
-        $table->foreignId('category_id')->constrained('library_categories');
-        $table->string('title');
-        $table->string('slug')->unique();
-        $table->string('item_type')->default('word');
-        $table->text('meaning')->nullable();
-        $table->text('description')->nullable();
-        $table->unsignedInteger('sort_order')->default(0);
-        $table->string('status')->default('draft');
-        $table->text('movement_description')->nullable();
-        $table->text('example_usage')->nullable();
-        $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
-        $table->timestampsTz();
-    });
+    if (! Schema::hasTable('library_items')) {
+        Schema::create('library_items', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('category_id')->constrained('library_categories');
+            $table->string('title');
+            $table->string('slug')->unique();
+            $table->string('item_type')->default('word');
+            $table->text('meaning')->nullable();
+            $table->text('description')->nullable();
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->string('status')->default('draft');
+            $table->text('movement_description')->nullable();
+            $table->text('example_usage')->nullable();
+            $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestampsTz();
+        });
+    }
 
-    Schema::create('library_media', function (Blueprint $table): void {
-        $table->id();
-        $table->foreignId('library_item_id')->nullable()->constrained('library_items')->nullOnDelete();
-        $table->string('media_type');
-        $table->string('storage_path')->unique();
-        $table->string('mime_type')->nullable();
-        $table->unsignedBigInteger('file_size_bytes')->nullable();
-        $table->string('alt_text')->nullable();
-        $table->unsignedInteger('sort_order')->default(0);
-        $table->boolean('is_primary')->default(false);
-        $table->string('thumbnail_path')->nullable();
-        $table->string('caption')->nullable();
-        $table->unsignedInteger('duration_seconds')->nullable();
-        $table->foreignId('uploaded_by')->nullable()->constrained('users')->nullOnDelete();
-        $table->timestampsTz();
-    });
+    if (! Schema::hasTable('library_media')) {
+        Schema::create('library_media', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('library_item_id')->nullable()->constrained('library_items')->nullOnDelete();
+            $table->string('media_type');
+            $table->storage_path ?? $table->string('storage_path')->unique();
+            $table->string('mime_type')->nullable();
+            $table->unsignedBigInteger('file_size_bytes')->nullable();
+            $table->string('alt_text')->nullable();
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->boolean('is_primary')->default(false);
+            $table->string('thumbnail_path')->nullable();
+            $table->string('caption')->nullable();
+            $table->unsignedInteger('duration_seconds')->nullable();
+            $table->foreignId('uploaded_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestampsTz();
+        });
+    }
 
-    Schema::create('library_item_media', function (Blueprint $table): void {
-        $table->foreignId('library_item_id')->constrained('library_items')->cascadeOnDelete();
-        $table->foreignId('library_media_id')->constrained('library_media')->cascadeOnDelete();
-        $table->unsignedInteger('sort_order')->default(0);
-        $table->boolean('is_primary')->default(false);
-        $table->string('caption')->nullable();
-        $table->timestampsTz();
-        $table->primary(['library_item_id', 'library_media_id']);
-        $table->index(['library_item_id', 'sort_order'], 'library_item_media_sort_idx');
-        $table->index('library_media_id', 'library_item_media_media_idx');
-    });
+    if (! Schema::hasTable('library_item_media')) {
+        Schema::create('library_item_media', function (Blueprint $table): void {
+            $table->foreignId('library_item_id')->constrained('library_items')->cascadeOnDelete();
+            $table->foreignId('library_media_id')->constrained('library_media')->cascadeOnDelete();
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->boolean('is_primary')->default(false);
+            $table->string('caption')->nullable();
+            $table->timestampsTz();
+            $table->primary(['library_item_id', 'library_media_id']);
+            $table->index(['library_item_id', 'sort_order'], 'library_item_media_sort_idx');
+            $table->index('library_media_id', 'library_item_media_media_idx');
+        });
+    }
 
     DB::statement(<<<'SQL'
-        CREATE UNIQUE INDEX library_item_media_one_primary_per_item
+        CREATE UNIQUE INDEX IF NOT EXISTS library_item_media_one_primary_per_item
         ON library_item_media (library_item_id)
         WHERE is_primary = true
         SQL);

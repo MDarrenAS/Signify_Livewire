@@ -35,8 +35,8 @@ new #[Layout('layouts::lessons')] class extends Component
         $module = Module::where('slug', $modul)
             ->with([
                 'lessons' => fn ($q) => $q->orderBy('sort_order')->orderBy('id'),
-                'lessons.items' => fn ($q) => $q->orderBy('sort_order')->orderBy('id'),
-                'lessons.questions' => fn ($q) => $q->orderBy('sort_order')->orderBy('id'),
+                'lessons.libraryItems.media',
+                'lessons.quiz.questions.options',
             ])
             ->first();
 
@@ -48,7 +48,7 @@ new #[Layout('layouts::lessons')] class extends Component
 
         $lesson = $lessons->get($lessonIndex);
 
-        $allModules = Module::where('is_active', true)->orderBy('sort_order')->orderBy('id')->get();
+        $allModules = Module::where('status', 'published')->orderBy('sort_order')->orderBy('id')->get();
         $currentModIndex = $allModules->search(fn ($m) => $m->id === $module->id);
         $nextModulModel = $currentModIndex !== false ? $allModules->get($currentModIndex + 1) : null;
 
@@ -71,35 +71,8 @@ new #[Layout('layouts::lessons')] class extends Component
             'passing_score' => $lesson->passing_score,
         ];
 
-        $this->items = $lesson->items->map(fn ($it) => [
-            'id'          => $it->id,
-            'order'       => $it->sort_order,
-            'symbol'      => $it->symbol,
-            'title'       => $it->title,
-            'hand_type'   => $it->hand_type,
-            'video_url'   => $it->video_url,
-            'instruction' => $it->instruction,
-            'description' => $it->instruction,
-            'una_tip'     => $it->tip,
-            'tip'         => $it->tip,
-        ])->all();
-
-        $this->questions = $lesson->questions->map(function ($q) {
-            $options = array_values($q->options ?? []);
-            $correctIndex = $q->correct_index;
-
-            return [
-                'id'            => $q->id,
-                'order'         => $q->sort_order,
-                'question'      => $q->question,
-                'media_url'     => $q->video_url,
-                'video_url'     => $q->video_url,
-                'symbol_hint'   => $q->symbol_hint,
-                'options'       => $options,
-                'correct_index' => (int) $correctIndex,
-                'explanation'   => $q->explanation,
-            ];
-        })->all();
+        $this->items = $lesson->items;
+        $this->questions = $lesson->questions;
 
         $this->partOrder  = $lesson->sort_order ?? ($lessonIndex + 1);
         $this->totalParts = $lessons->count();
@@ -203,13 +176,14 @@ new #[Layout('layouts::lessons')] class extends Component
             if ($lessonId) {
                 UserLessonProgress::updateOrCreate(
                     [
-                        'user_id'          => $user->id,
-                        'module_lesson_id' => $lessonId,
+                        'user_id'   => $user->id,
+                        'lesson_id' => $lessonId,
                     ],
                     [
-                        'status'       => 'completed',
-                        'score'        => $quizScore,
-                        'completed_at' => now(),
+                        'status'           => 'completed',
+                        'progress_percent' => $quizScore !== null ? $quizScore : 100,
+                        'completed_at'     => now(),
+                        'last_accessed_at' => now(),
                     ]
                 );
             }

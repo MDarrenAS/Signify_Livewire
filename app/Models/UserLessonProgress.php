@@ -10,15 +10,19 @@ class UserLessonProgress extends Model
 {
     use HasFactory;
 
+    protected $table = 'user_lesson_progress';
+
     /**
      * @var list<string>
      */
     protected $fillable = [
         'user_id',
-        'module_lesson_id',
+        'lesson_id',
         'status',
-        'score',
+        'progress_percent',
+        'started_at',
         'completed_at',
+        'last_accessed_at',
     ];
 
     /**
@@ -28,9 +32,11 @@ class UserLessonProgress extends Model
     {
         return [
             'user_id' => 'integer',
-            'module_lesson_id' => 'integer',
-            'score' => 'integer',
+            'lesson_id' => 'integer',
+            'progress_percent' => 'float',
+            'started_at' => 'datetime',
             'completed_at' => 'datetime',
+            'last_accessed_at' => 'datetime',
         ];
     }
 
@@ -47,6 +53,6 @@ class UserLessonProgress extends Model
      */
     public function lesson(): BelongsTo
     {
-        return $this->belongsTo(ModuleLesson::class, 'module_lesson_id');
+        return $this->belongsTo(ModuleLesson::class, 'lesson_id');
     }
 }

@@ -15,18 +15,14 @@ class Module extends Model
      * @var list<string>
      */
     protected $fillable = [
-        'unit_id',
         'title',
         'slug',
-        'icon_emoji',
-        'icon_url',
-        'subtitle',
         'description',
-        'xp_reward',
-        'visual_content',
-        'tag',
-        'is_active',
+        'thumbnail_path',
+        'level',
         'sort_order',
+        'status',
+        'created_by',
     ];
 
     /**
@@ -35,19 +31,9 @@ class Module extends Model
     protected function casts(): array
     {
         return [
-            'unit_id' => 'integer',
-            'xp_reward' => 'integer',
-            'is_active' => 'boolean',
             'sort_order' => 'integer',
+            'created_by' => 'integer',
         ];
-    }
-
-    /**
-     * @return BelongsTo<Unit, $this>
-     */
-    public function unit(): BelongsTo
-    {
-        return $this->belongsTo(Unit::class);
     }
 
     /**
@@ -55,7 +41,9 @@ class Module extends Model
      */
     public function lessons(): HasMany
     {
-        return $this->hasMany(ModuleLesson::class)->orderBy('sort_order')->orderBy('id');
+        return $this->hasMany(ModuleLesson::class, 'module_id')
+            ->orderBy('sort_order')
+            ->orderBy('id');
     }
 
     /**
@@ -66,5 +54,59 @@ class Module extends Model
     public function parts(): HasMany
     {
         return $this->lessons();
+    }
+
+    /**
+     * @return HasMany<Quiz, $this>
+     */
+    public function quizzes(): HasMany
+    {
+        return $this->hasMany(Quiz::class, 'module_id');
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function getIsActiveAttribute(): bool
+    {
+        return $this->status === 'published';
+    }
+
+    public function getIconAttribute(): string
+    {
+        if ($this->level === 'advanced') {
+            return '🏆';
+        }
+
+        if ($this->level === 'intermediate') {
+            return '💬';
+        }
+
+        return '🤟';
+    }
+
+    public function getIconEmojiAttribute(): string
+    {
+        return $this->icon;
+    }
+
+    public function getIconUrlAttribute(): ?string
+    {
+        return $this->thumbnail_path;
+    }
+
+    public function getXpRewardAttribute(): int
+    {
+        return 70;
+    }
+
+    public function getSubtitleAttribute(): ?string
+    {
+        return $this->description;
     }
 }

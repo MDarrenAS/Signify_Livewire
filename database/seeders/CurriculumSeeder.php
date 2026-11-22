@@ -2,13 +2,14 @@
 
 namespace Database\Seeders;
 
-use App\Models\LessonItem;
+use App\Models\LessonLibraryItem;
 use App\Models\LibraryCategory;
 use App\Models\LibraryItem;
 use App\Models\Module;
 use App\Models\ModuleLesson;
-use App\Models\ModuleLessonQuestion;
-use App\Models\Unit;
+use App\Models\Quiz;
+use App\Models\QuizOption;
+use App\Models\QuizQuestion;
 use App\Support\MockCurriculum;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -45,40 +46,33 @@ class CurriculumSeeder extends Seeder
 
             $units = MockCurriculum::getUnits();
 
-            foreach ($units as $unitIndex => $unitData) {
-                $unit = Unit::updateOrCreate(
-                    ['unit_number' => $unitData['id'] ?? ($unitIndex + 1)],
-                    [
-                        'level' => 'TINGKAT DASAR',
-                        'badge' => $unitData['badge'] ?? 'UNIT '.($unitIndex + 1).' • TINGKAT DASAR',
-                        'title' => $unitData['title'] ?? 'Unit '.($unitIndex + 1),
-                        'description' => $unitData['description'] ?? null,
-                        'sort_order' => $unitIndex + 1,
-                        'is_active' => ! ($unitData['is_locked'] ?? false),
-                    ]
-                );
-
+            $globalModSort = 1;
+            foreach ($units as $unitData) {
                 $modules = $unitData['modules'] ?? [];
-                foreach ($modules as $modIndex => $modData) {
+                foreach ($modules as $modData) {
+                    $level = 'beginner';
+                    if (str_contains($unitData['badge'] ?? '', 'MENENGAH')) {
+                        $level = 'intermediate';
+                    } elseif (str_contains($unitData['badge'] ?? '', 'MAHIR')) {
+                        $level = 'advanced';
+                    }
+
                     $module = Module::updateOrCreate(
                         ['slug' => $modData['slug']],
                         [
-                            'unit_id' => $unit->id,
                             'title' => $modData['title'],
-                            'icon_emoji' => $modData['icon_emoji'] ?? '🤟',
-                            'icon_url' => $modData['icon_url'] ?? null,
-                            'subtitle' => $modData['subtitle'] ?? null,
                             'description' => $modData['description'] ?? null,
-                            'xp_reward' => $modData['xp_reward'] ?? 50,
-                            'visual_content' => $modData['visual_content'] ?? null,
-                            'tag' => $modData['tag'] ?? null,
-                            'is_active' => ($modData['status'] ?? '') !== 'locked',
-                            'sort_order' => $modIndex + 1,
+                            'thumbnail_path' => $modData['icon_url'] ?? null,
+                            'level' => $level,
+                            'sort_order' => $globalModSort++,
+                            'status' => ($modData['status'] ?? '') === 'locked' ? 'draft' : 'published',
                         ]
                     );
 
                     $parts = $modData['parts'] ?? [];
                     foreach ($parts as $partIndex => $partData) {
+                        $lessonType = $partData['type'] ?? 'lesson';
+
                         $lesson = ModuleLesson::updateOrCreate(
                             [
                                 'module_id' => $module->id,
@@ -86,24 +80,23 @@ class CurriculumSeeder extends Seeder
                             ],
                             [
                                 'title' => $partData['title'],
-                                'type' => $partData['type'] ?? 'lesson',
-                                'subtitle' => $partData['subtitle'] ?? null,
-                                'category' => $partData['category'] ?? null,
-                                'badge_text' => $partData['badge_text'] ?? null,
-                                'xp_reward' => $partData['xp_reward'] ?? 10,
-                                'passing_score' => $partData['passing_score'] ?? 80,
+                                'lesson_type' => $lessonType,
+                                'summary' => $partData['subtitle'] ?? null,
+                                'description' => $partData['category'] ?? null,
                                 'sort_order' => $partData['order'] ?? ($partIndex + 1),
+                                'status' => 'published',
+                                'estimated_minutes' => $lessonType === 'quiz' ? 10 : 5,
                             ]
                         );
 
-                        if (($partData['type'] ?? 'lesson') === 'lesson') {
+                        if ($lessonType === 'lesson') {
                             $items = $partData['items'] ?? [];
-                            foreach ($items as $itemIdx => $item) {
-                                $itemTitle = $item['title'] ?? 'Item '.($itemIdx + 1);
-                                $itemSlug = Str::slug($itemTitle);
+                            $savedItems = [];
 
-                                // Hubungkan ke entri Kamus (LibraryItem)
-                                $category = str_contains(strtolower($module->title), 'angka')
+                            foreach ($items as $itemIdx => $itemData) {
+                                $itemSlug = Str::slug($itemData['title']);
+
+                                $category = str_contains($module->slug, 'angka')
                                     ? $kamusAngkaCategory
                                     : $kamusAbjadCategory;
 
@@ -111,48 +104,100 @@ class CurriculumSeeder extends Seeder
                                     ['slug' => $itemSlug],
                                     [
                                         'category_id' => $category->id,
-                                        'title' => $itemTitle,
-                                        'item_type' => str_contains(strtolower($module->title), 'angka') ? 'number' : 'alphabet',
-                                        'meaning' => 'Isyarat BISINDO untuk '.$itemTitle,
-                                        'movement_description' => $item['instruction'] ?? null,
+                                        'title' => $itemData['title'],
+                                        'item_type' => str_contains($module->slug, 'angka') ? 'number' : 'alphabet',
+                                        'meaning' => $itemData['symbol'] ?? $itemData['title'],
+                                        'description' => $itemData['instruction'] ?? null,
+                                        'movement_description' => $itemData['instruction'] ?? null,
+                                        'example_usage' => $itemData['una_tip'] ?? ($itemData['tip'] ?? null),
                                         'status' => 'published',
+                                        'sort_order' => $itemIdx + 1,
                                     ]
                                 );
 
-                                LessonItem::updateOrCreate(
+                                LessonLibraryItem::updateOrCreate(
                                     [
-                                        'module_lesson_id' => $lesson->id,
-                                        'title' => $itemTitle,
-                                    ],
-                                    [
+                                        'lesson_id' => $lesson->id,
                                         'library_item_id' => $libraryItem->id,
-                                        'symbol' => $item['symbol'] ?? null,
-                                        'hand_type' => $item['hand_type'] ?? '1 Tangan',
-                                        'video_url' => $item['video_url'] ?? null,
-                                        'instruction' => $item['instruction'] ?? null,
-                                        'tip' => $item['una_tip'] ?? $item['tip'] ?? null,
-                                        'sort_order' => $item['order'] ?? ($itemIdx + 1),
-                                    ]
-                                );
-                            }
-                        } elseif (($partData['type'] ?? '') === 'quiz') {
-                            $questions = $partData['questions'] ?? [];
-                            foreach ($questions as $qIdx => $q) {
-                                ModuleLessonQuestion::updateOrCreate(
-                                    [
-                                        'module_lesson_id' => $lesson->id,
-                                        'sort_order' => $q['order'] ?? ($qIdx + 1),
                                     ],
                                     [
-                                        'question' => $q['question'],
-                                        'video_url' => $q['media_url'] ?? $q['video_url'] ?? null,
-                                        'symbol_hint' => $q['symbol_hint'] ?? null,
-                                        'options' => array_values($q['options'] ?? []),
-                                        'correct_index' => (int) ($q['correct_index'] ?? 0),
-                                        'explanation' => $q['explanation'] ?? null,
+                                        'sort_order' => $itemIdx + 1,
                                     ]
                                 );
+
+                                $savedItems[] = [
+                                    'id' => $libraryItem->id,
+                                    'library_item_id' => $libraryItem->id,
+                                    'order' => $itemIdx + 1,
+                                    'symbol' => $itemData['symbol'] ?? strtoupper(substr($itemData['title'], 0, 3)),
+                                    'title' => $itemData['title'],
+                                    'hand_type' => $itemData['hand_type'] ?? '2 Tangan',
+                                    'video_url' => $itemData['video_url'] ?? null,
+                                    'instruction' => $itemData['instruction'] ?? null,
+                                    'description' => $itemData['instruction'] ?? null,
+                                    'una_tip' => $itemData['una_tip'] ?? ($itemData['tip'] ?? null),
+                                    'tip' => $itemData['una_tip'] ?? ($itemData['tip'] ?? null),
+                                ];
                             }
+
+                            $lesson->update([
+                                'content' => json_encode(['items' => $savedItems], JSON_UNESCAPED_UNICODE),
+                            ]);
+                        } elseif ($lessonType === 'quiz') {
+                            $questions = $partData['questions'] ?? [];
+
+                            $quiz = Quiz::updateOrCreate(
+                                ['lesson_id' => $lesson->id],
+                                [
+                                    'module_id' => $module->id,
+                                    'title' => $lesson->title,
+                                    'slug' => $lesson->slug,
+                                    'description' => $partData['subtitle'] ?? 'Kuis Evaluasi',
+                                    'passing_score' => $partData['passing_score'] ?? 80,
+                                    'status' => 'published',
+                                ]
+                            );
+
+                            QuizQuestion::where('quiz_id', $quiz->id)->delete();
+
+                            $savedQuestions = [];
+                            foreach ($questions as $qIdx => $qData) {
+                                $options = array_values($qData['options'] ?? []);
+                                $correctIndex = (int) ($qData['correct_index'] ?? 0);
+
+                                $qq = QuizQuestion::create([
+                                    'quiz_id' => $quiz->id,
+                                    'question_text' => $qData['question'] ?? 'Pertanyaan',
+                                    'question_type' => 'multiple_choice',
+                                    'points' => 1,
+                                    'sort_order' => $qIdx + 1,
+                                    'explanation' => $qData['explanation'] ?? null,
+                                ]);
+
+                                foreach ($options as $optIdx => $optText) {
+                                    QuizOption::create([
+                                        'question_id' => $qq->id,
+                                        'option_text' => $optText,
+                                        'is_correct' => $optIdx === $correctIndex,
+                                        'sort_order' => $optIdx + 1,
+                                    ]);
+                                }
+
+                                $savedQuestions[] = [
+                                    'id' => $qq->id,
+                                    'order' => $qIdx + 1,
+                                    'question' => $qData['question'] ?? 'Pertanyaan',
+                                    'video_url' => $qData['video_url'] ?? ($qData['media_url'] ?? null),
+                                    'symbol_hint' => $qData['symbol_hint'] ?? null,
+                                    'options' => $options,
+                                    'correct_index' => $correctIndex,
+                                    'explanation' => $qData['explanation'] ?? null,
+                                ];
+                            }
+
+                            $lesson->update([
+                                'content' => json_encode(['questions' => $savedQuestions], JSON_UNESCAPED_UNICODE),
+                            ]);
                         }
                     }
                 }
