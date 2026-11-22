@@ -1,5 +1,16 @@
 <?php
 
+use App\Models\LibraryItem;
+use App\Models\LibraryMedia;
+use App\Models\Quiz;
+use App\Models\QuizOption;
+use App\Models\QuizQuestion;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -9,13 +20,12 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
 {
     use WithFileUploads;
 
-    public array $packages = [];
     public string $search = '';
     public string $levelFilter = 'all';
 
     // State Modal Paket Kuis
     public bool $showModal = false;
-    public ?int $editIdx = null;
+    public ?int $editingQuizId = null;
 
     public string $title = '';
     public string $subtitle = '';
@@ -28,133 +38,95 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
 
     // State Modal Kelola Soal Kuis
     public bool $showQuestionsModal = false;
-    public ?int $managePackageIdx = null;
+    public ?int $manageQuizId = null;
 
-    // State Tambah Soal Baru
+    // State Tambah / Edit Soal
     public bool $showAddQuestionModal = false;
-    public string $questionText = 'Perhatikan gerakan isyarat ini. Manakah arti atau huruf yang benar?';
+    public ?int $editingQuestionId = null;
+    public string $questionType = 'sign_to_word';
+    public ?int $selectedLibraryItemId = null;
+    public ?int $selectedLibraryMediaId = null;
+    public string $questionText = 'Perhatikan gerakan isyarat ini. Manakah arti atau kata yang benar?';
     public string $questionMediaUrl = '';
     public $questionMediaFile = null;
     public array $questionOptions = ['', '', '', ''];
+    public array $questionOptionMediaFiles = [null, null, null, null];
+    public array $questionOptionMediaUrls = ['', '', '', ''];
     public int $questionCorrectIndex = 0;
 
-    public function mount(): void
+    public function boot(): void
     {
-        $this->packages = session('admin_quiz_packages', [
-            [
-                'title'           => 'Tantangan Abjad Visual A–Z',
-                'subtitle'        => 'Uji kecekatan membaca dan mengenali 26 alfabet BISINDO.',
-                'level'           => 'Pemula',
-                'questions_count' => 3,
-                'xp_reward'       => 50,
-                'icon_emoji'      => '🔤',
-                'icon_url'        => '',
-                'is_active'       => true,
-                'questions'       => [
-                    [
-                        'question'      => 'Isyarat dengan menyatukan ujung ibu jari dan telunjuk membentuk segitiga melambangkan huruf?',
-                        'video_url'     => '/storage/signs/abjad/a.mp4',
-                        'options'       => ['Huruf A', 'Huruf B', 'Huruf C', 'Huruf D'],
-                        'correct_index' => 0,
-                    ],
-                    [
-                        'question'      => 'Mengacungkan jari kelingking tegak ke atas melambangkan huruf?',
-                        'video_url'     => '/storage/signs/abjad/i.mp4',
-                        'options'       => ['Huruf U', 'Huruf I', 'Huruf E', 'Huruf O'],
-                        'correct_index' => 1,
-                    ],
-                    [
-                        'question'      => 'Dua jari telunjuk dan jari tengah tegak rapat ke atas melambangkan huruf?',
-                        'video_url'     => '',
-                        'options'       => ['Huruf V', 'Huruf U', 'Huruf W', 'Huruf R'],
-                        'correct_index' => 1,
-                    ],
-                ],
-            ],
-            [
-                'title'           => 'Sapaan & Perkenalan Kilat',
-                'subtitle'        => 'Salam, terima kasih, perkenalan diri, dan panggilan sopan.',
-                'level'           => 'Pemula',
-                'questions_count' => 2,
-                'xp_reward'       => 40,
-                'icon_emoji'      => '👋',
-                'icon_url'        => '',
-                'is_active'       => true,
-                'questions'       => [
-                    [
-                        'question'      => 'Menyentuhkan ujung jari ke dagu lalu mengarahkannya ke depan berarti?',
-                        'video_url'     => '/storage/signs/sapaan/terima-kasih.mp4',
-                        'options'       => ['Selamat Pagi', 'Terima Kasih', 'Sama-sama', 'Minta Maaf'],
-                        'correct_index' => 1,
-                    ],
-                    [
-                        'question'      => 'Melambaikan tangan kanan terbuka ke arah depan berarti?',
-                        'video_url'     => '/storage/signs/sapaan/halo.mp4',
-                        'options'       => ['Halo / Hai', 'Sampai Jumpa', 'Kabar Baik', 'Siapa Namamu'],
-                        'correct_index' => 0,
-                    ],
-                ],
-            ],
-            [
-                'title'           => 'Angka, Jam & Waktu Sehari-hari',
-                'subtitle'        => 'Mengenal bilangan isyarat, tanggal, dan rentang waktu.',
-                'level'           => 'Menengah',
-                'questions_count' => 0,
-                'xp_reward'       => 75,
-                'icon_emoji'      => '⏱️',
-                'icon_url'        => '',
-                'is_active'       => false,
-                'questions'       => [],
-            ],
-        ]);
+        Gate::authorize('manage-kamus');
     }
 
-    private function persist(): void
+    #[Computed]
+    public function quizzes(): Collection
     {
-        session(['admin_quiz_packages' => $this->packages]);
+        return Quiz::query()
+            ->withCount('questions')
+            ->when(trim($this->search) !== '', function (Builder $query): void {
+                $term = '%' . trim($this->search) . '%';
+                $query->where(function (Builder $sub) use ($term): void {
+                    $sub->where('title', 'like', $term)
+                        ->orWhere('description', 'like', $term);
+                });
+            })
+            ->when($this->levelFilter !== 'all', fn (Builder $q) => $q->where('level', $this->levelFilter))
+            ->orderBy('sort_order')
+            ->orderByDesc('id')
+            ->get();
     }
 
-    public function getActivePackageProperty(): ?array
+    #[Computed]
+    public function activeQuiz(): ?Quiz
     {
-        if ($this->managePackageIdx === null || ! isset($this->packages[$this->managePackageIdx])) {
+        if (! $this->manageQuizId) {
             return null;
         }
 
-        return $this->packages[$this->managePackageIdx];
+        return Quiz::with(['questions.options', 'questions.libraryItem', 'questions.media'])->find($this->manageQuizId);
+    }
+
+    #[Computed]
+    public function kamusItems(): Collection
+    {
+        return LibraryItem::with(['media', 'category'])->orderBy('title')->get();
     }
 
     // ==================== KELOLA PAKET KUIS ====================
     public function openCreate(): void
     {
         $this->resetValidation();
-        $this->editIdx   = null;
-        $this->title     = '';
-        $this->subtitle  = '';
-        $this->level     = 'Pemula';
-        $this->xpReward  = 50;
-        $this->iconEmoji = '🎯';
-        $this->iconFile  = null;
-        $this->iconUrl   = '';
-        $this->isActive  = true;
-        $this->showModal = true;
+        $this->editingQuizId = null;
+        $this->title         = '';
+        $this->subtitle      = '';
+        $this->level         = 'Pemula';
+        $this->xpReward      = 50;
+        $this->iconEmoji     = '🎯';
+        $this->iconFile      = null;
+        $this->iconUrl       = '';
+        $this->isActive      = true;
+        $this->showModal     = true;
     }
 
-    public function openEdit(int $idx): void
+    public function openEdit(int $quizId): void
     {
-        $pkg = $this->packages[$idx] ?? null;
-        if (! $pkg) return;
+        $quiz = Quiz::find($quizId);
+        if (! $quiz) {
+            return;
+        }
 
         $this->resetValidation();
-        $this->editIdx   = $idx;
-        $this->title     = $pkg['title'] ?? '';
-        $this->subtitle  = $pkg['subtitle'] ?? '';
-        $this->level     = $pkg['level'] ?? 'Pemula';
-        $this->xpReward  = (int) ($pkg['xp_reward'] ?? 50);
-        $this->iconEmoji = $pkg['icon_emoji'] ?? '🎯';
-        $this->iconFile  = null;
-        $this->iconUrl   = $pkg['icon_url'] ?? '';
-        $this->isActive  = (bool) ($pkg['is_active'] ?? true);
-        $this->showModal = true;
+        $this->editingQuizId = $quiz->id;
+        $this->title         = $quiz->title;
+        $this->subtitle      = $quiz->description ?? '';
+        $this->level         = $quiz->level;
+        $this->xpReward      = (int) $quiz->xp_reward;
+        $this->iconEmoji     = $quiz->icon_emoji ?: '🎯';
+        $this->iconFile      = null;
+        $this->iconUrl       = $quiz->icon_url ?? '';
+        $this->isActive      = $quiz->isPublished();
+        $this->showModal     = true;
     }
 
     public function savePackage(): void
@@ -174,53 +146,41 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
                 $path = $this->iconFile->store('quizzes/icons', 'public');
                 $finalIconUrl = '/storage/' . $path;
             } catch (\Throwable $e) {
-                // fallback
+                // Fallback
             }
         }
 
-        if ($this->editIdx !== null && isset($this->packages[$this->editIdx])) {
-            $this->packages[$this->editIdx]['title']      = $this->title;
-            $this->packages[$this->editIdx]['subtitle']   = $this->subtitle;
-            $this->packages[$this->editIdx]['level']      = $this->level;
-            $this->packages[$this->editIdx]['xp_reward']  = $this->xpReward;
-            $this->packages[$this->editIdx]['icon_emoji'] = $this->iconEmoji ?: '🎯';
-            $this->packages[$this->editIdx]['icon_url']   = $finalIconUrl;
-            $this->packages[$this->editIdx]['is_active']  = $this->isActive;
+        $quiz = Quiz::updateOrCreate(
+            ['id' => $this->editingQuizId],
+            [
+                'title'       => $this->title,
+                'description' => $this->subtitle,
+                'level'       => $this->level,
+                'xp_reward'   => $this->xpReward,
+                'icon_emoji'  => $this->iconEmoji ?: '🎯',
+                'icon_url'    => $finalIconUrl,
+                'status'      => $this->isActive ? 'published' : 'draft',
+                'created_by'  => auth()->id(),
+            ],
+        );
 
-            $this->dispatch('notify', [
-                'type'    => 'success',
-                'message' => 'Paket kuis "' . $this->title . '" berhasil diperbarui!',
-            ]);
-        } else {
-            $this->packages[] = [
-                'title'           => $this->title,
-                'subtitle'        => $this->subtitle,
-                'level'           => $this->level,
-                'questions_count' => 0,
-                'xp_reward'       => $this->xpReward,
-                'icon_emoji'      => $this->iconEmoji ?: '🎯',
-                'icon_url'        => $finalIconUrl,
-                'is_active'       => $this->isActive,
-                'questions'       => [],
-            ];
+        $actionText = $this->editingQuizId ? 'diperbarui' : 'ditambahkan';
+        $this->dispatch('notify', [
+            'type'    => 'success',
+            'message' => 'Paket kuis "' . $quiz->title . '" berhasil ' . $actionText . '!',
+        ]);
 
-            $this->dispatch('notify', [
-                'type'    => 'success',
-                'message' => 'Paket kuis baru berhasil ditambahkan! Silakan klik "Kelola Soal" untuk membuat soalnya.',
-            ]);
-        }
-
-        $this->persist();
         $this->showModal = false;
     }
 
-    public function toggleStatus(int $idx): void
+    public function toggleStatus(int $quizId): void
     {
-        if (isset($this->packages[$idx])) {
-            $this->packages[$idx]['is_active'] = ! $this->packages[$idx]['is_active'];
-            $this->persist();
+        $quiz = Quiz::find($quizId);
+        if ($quiz) {
+            $newStatus = $quiz->isPublished() ? 'draft' : 'published';
+            $quiz->update(['status' => $newStatus]);
 
-            $statusText = $this->packages[$idx]['is_active'] ? 'dipublikasikan' : 'dinonaktifkan';
+            $statusText = $newStatus === 'published' ? 'dipublikasikan' : 'dinonaktifkan';
             $this->dispatch('notify', [
                 'type'    => 'info',
                 'message' => 'Paket kuis berhasil ' . $statusText . '.',
@@ -228,95 +188,268 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
         }
     }
 
-    public function deletePackage(int $idx): void
+    public function deletePackage(int $quizId): void
     {
-        $name = $this->packages[$idx]['title'] ?? 'Paket';
-        unset($this->packages[$idx]);
-        $this->packages = array_values($this->packages);
-        $this->persist();
+        $quiz = Quiz::find($quizId);
+        if ($quiz) {
+            $name = $quiz->title;
+            $quiz->delete();
 
-        $this->dispatch('notify', [
-            'type'    => 'success',
-            'message' => 'Paket kuis "' . $name . '" berhasil dihapus.',
-        ]);
+            $this->dispatch('notify', [
+                'type'    => 'success',
+                'message' => 'Paket kuis "' . $name . '" berhasil dihapus.',
+            ]);
+        }
     }
 
     // ==================== KELOLA BUTIR SOAL KUIS ====================
-    public function openManageQuestions(int $pkgIdx): void
+    public function openManageQuestions(int $quizId): void
     {
-        $this->managePackageIdx = $pkgIdx;
+        Quiz::query()->findOrFail($quizId);
+        $this->manageQuizId = $quizId;
         $this->showQuestionsModal = true;
     }
 
     public function openAddQuestion(): void
     {
+        Quiz::query()->findOrFail($this->manageQuizId ?? 0);
         $this->resetValidation();
-        $this->questionText         = 'Perhatikan gerakan isyarat ini. Manakah arti atau huruf yang benar?';
-        $this->questionMediaUrl     = '';
-        $this->questionMediaFile    = null;
-        $this->questionOptions      = ['', '', '', ''];
-        $this->questionCorrectIndex = 0;
+        $this->editingQuestionId      = null;
+        $this->questionType           = 'sign_to_word';
+        $this->selectedLibraryItemId  = null;
+        $this->selectedLibraryMediaId = null;
+        $this->questionText           = 'Perhatikan gerakan isyarat ini. Manakah arti atau huruf yang benar?';
+        $this->questionMediaUrl       = '';
+        $this->questionMediaFile      = null;
+        $this->questionOptions        = ['', '', '', ''];
+        $this->questionOptionMediaFiles = [null, null, null, null];
+        $this->questionOptionMediaUrls  = ['', '', '', ''];
+        $this->questionCorrectIndex   = 0;
+        $this->showAddQuestionModal   = true;
+    }
+
+    public function openEditQuestion(int $questionId): void
+    {
+        $question = QuizQuestion::query()
+            ->where('quiz_id', $this->manageQuizId)
+            ->with(['options', 'media'])
+            ->findOrFail($questionId);
+
+        $this->resetValidation();
+        $this->editingQuestionId      = $question->id;
+        $this->questionType           = $question->question_type ?? 'sign_to_word';
+        $this->selectedLibraryItemId  = $question->library_item_id;
+        $this->selectedLibraryMediaId = $question->library_media_id;
+        $this->questionText           = $question->question_text ?? '';
+        $this->questionMediaFile      = null;
+
+        // Resolve media URL
+        $this->questionMediaUrl = $question->getEffectiveMediaUrl() ?? '';
+
+        // Load existing options
+        $options = $question->options->sortBy('sort_order')->values();
+        $this->questionOptions         = ['', '', '', ''];
+        $this->questionOptionMediaFiles = [null, null, null, null];
+        $this->questionOptionMediaUrls  = ['', '', '', ''];
+        $this->questionCorrectIndex    = 0;
+        foreach ($options as $idx => $opt) {
+            if ($idx < 4) {
+                $this->questionOptions[$idx] = $opt->option_text ?? $opt->getEffectiveText();
+                $this->questionOptionMediaUrls[$idx] = $opt->getEffectiveMediaUrl() ?? '';
+                if ($opt->is_correct) {
+                    $this->questionCorrectIndex = $idx;
+                }
+            }
+        }
+
         $this->showAddQuestionModal = true;
+    }
+
+    public function applyKamusItem($itemId): void
+    {
+        if (blank($itemId)) {
+            $this->selectedLibraryItemId = null;
+            return;
+        }
+
+        $item = LibraryItem::with(['media'])->find($itemId);
+        if (! $item) {
+            return;
+        }
+
+        $this->selectedLibraryItemId = $item->id;
+        $primaryMedia = $item->media->first();
+        if ($primaryMedia) {
+            $this->selectedLibraryMediaId = $primaryMedia->id;
+            try {
+                $this->questionMediaUrl = $primaryMedia->temporaryUrl();
+            } catch (\Throwable) {
+                $this->questionMediaUrl = $primaryMedia->storage_path ? '/storage/' . $primaryMedia->storage_path : '';
+            }
+        }
+
+        if ($this->questionType === 'sign_to_word') {
+            $this->questionText = 'Perhatikan peragaan isyarat di atas. Manakah kosakata yang tepat?';
+            $this->questionOptions[$this->questionCorrectIndex] = $item->title;
+
+            // Isi opsi lainnya dengan kata lain dari kamus jika masih kosong
+            $otherWords = LibraryItem::where('id', '!=', $item->id)->inRandomOrder()->limit(3)->pluck('title')->all();
+            $otherIdx = 0;
+            for ($i = 0; $i < 4; $i++) {
+                if ($i !== (int) $this->questionCorrectIndex && isset($otherWords[$otherIdx])) {
+                    $this->questionOptions[$i] = $otherWords[$otherIdx];
+                    $otherIdx++;
+                }
+            }
+        } elseif ($this->questionType === 'word_to_sign') {
+            $this->questionText = 'Manakah gerakan isyarat BISINDO yang melambangkan: "' . $item->title . '"?';
+            $this->questionOptions[$this->questionCorrectIndex] = 'Gerakan: ' . $item->title;
+        } elseif ($this->questionType === 'media_to_sign') {
+            $this->questionText = 'Perhatikan gambar objek di atas. Manakah gerakan isyarat yang tepat untuk "' . $item->title . '"?';
+            $this->questionOptions[$this->questionCorrectIndex] = 'Isyarat: ' . $item->title;
+        }
     }
 
     public function saveQuestion(): void
     {
+        $this->resetValidation();
         $this->validate([
-            'questionText'      => 'required|string|max:250',
-            'questionOptions.0' => 'required|string|max:100',
-            'questionOptions.1' => 'required|string|max:100',
-            'questionOptions.2' => 'required|string|max:100',
-            'questionOptions.3' => 'required|string|max:100',
-            'questionMediaFile' => 'nullable|file|mimes:mp4,webm,gif,png,jpg,jpeg,webp|max:30720',
+            'questionType'                 => ['required', 'in:sign_to_word,word_to_sign,media_to_sign'],
+            'questionText'                 => ['nullable', 'string', 'max:250'],
+            'questionMediaUrl'             => ['nullable', 'string', 'max:2048', 'regex:/^(https?:\/\/|\/storage\/)/i'],
+            'questionMediaFile'            => ['nullable', 'file', 'mimes:mp4,webm,gif,png,jpg,jpeg,webp', 'max:30720'],
+            'questionOptions'              => ['required', 'array', 'size:4'],
+            'questionOptions.*'            => ['nullable', 'string', 'max:100'],
+            'questionOptionMediaFiles'     => ['required', 'array', 'size:4'],
+            'questionOptionMediaFiles.*'   => ['nullable', 'file', 'mimes:mp4,webm,gif,png,jpg,jpeg,webp', 'max:30720'],
+            'questionOptionMediaUrls'      => ['required', 'array', 'size:4'],
+            'questionOptionMediaUrls.*'    => ['nullable', 'string', 'max:2048', 'regex:/^(https?:\/\/|\/storage\/)/i'],
+            'questionCorrectIndex'         => ['required', 'integer', 'between:0,3'],
+            'selectedLibraryItemId'        => ['nullable', 'integer', 'exists:library_items,id'],
+            'selectedLibraryMediaId'       => ['nullable', 'integer', 'exists:library_media,id'],
         ], [
-            'questionText.required'      => 'Teks pertanyaan wajib diisi.',
-            'questionOptions.*.required' => 'Seluruh 4 pilihan opsi jawaban wajib diisi.',
-            'questionMediaFile.mimes'    => 'Media soal harus berupa file video (MP4, WEBM) atau gambar (GIF, PNG, JPG).',
+            'questionType.in' => 'Tipe soal tidak valid.',
+            'questionMediaFile.mimes' => 'Media soal harus berupa file video (MP4, WEBM) atau gambar (GIF, PNG, JPG).',
+            'questionOptionMediaFiles.*.mimes' => 'Media pilihan harus berupa file video (MP4, WEBM) atau gambar (GIF, PNG, JPG).',
         ]);
 
-        $finalUrl = $this->questionMediaUrl;
-        if ($this->questionMediaFile) {
-            try {
-                $path = $this->questionMediaFile->store('quizzes/media', 'public');
-                $finalUrl = '/storage/' . $path;
-            } catch (\Throwable $e) {
-                // fallback
+        $hasQuestionContent = filled($this->questionText)
+            || filled($this->questionMediaUrl)
+            || $this->questionMediaFile !== null;
+
+        if (! $hasQuestionContent || ($this->questionType === 'word_to_sign' && blank($this->questionText))) {
+            $this->addError('questionText', 'Isi teks pertanyaan atau unggah media soal.');
+
+            return;
+        }
+
+        foreach ($this->questionOptions as $index => $optionText) {
+            if (
+                blank($optionText)
+                && blank($this->questionOptionMediaUrls[$index] ?? null)
+                && ($this->questionOptionMediaFiles[$index] ?? null) === null
+            ) {
+                $this->addError("questionOptions.{$index}", 'Isi teks atau unggah media untuk pilihan ini.');
             }
         }
 
-        if ($this->managePackageIdx !== null && isset($this->packages[$this->managePackageIdx])) {
-            $this->packages[$this->managePackageIdx]['questions'][] = [
-                'question'      => $this->questionText,
-                'video_url'     => $finalUrl,
-                'options'       => array_values($this->questionOptions),
-                'correct_index' => (int) $this->questionCorrectIndex,
-            ];
-
-            $this->packages[$this->managePackageIdx]['questions_count'] = count($this->packages[$this->managePackageIdx]['questions']);
-            $this->persist();
-
-            $this->dispatch('notify', [
-                'type'    => 'success',
-                'message' => 'Soal kuis baru berhasil ditambahkan!',
-            ]);
+        if ($this->getErrorBag()->isNotEmpty()) {
+            return;
         }
+
+        $quiz = Quiz::query()->findOrFail($this->manageQuizId ?? 0);
+        $finalUrl = $this->questionMediaUrl;
+        if ($this->questionMediaFile) {
+            $finalUrl = $this->storeMedia($this->questionMediaFile, 'quizzes/media');
+        }
+
+        $finalOptionMediaUrls = $this->questionOptionMediaUrls;
+        foreach ($this->questionOptionMediaFiles as $index => $mediaFile) {
+            if ($mediaFile) {
+                $finalOptionMediaUrls[$index] = $this->storeMedia($mediaFile, 'quizzes/options');
+            }
+        }
+
+        DB::transaction(function () use ($quiz, $finalUrl, $finalOptionMediaUrls): void {
+            if ($this->editingQuestionId) {
+                $question = QuizQuestion::query()
+                    ->where('quiz_id', $quiz->id)
+                    ->findOrFail($this->editingQuestionId);
+
+                $question->update([
+                    'library_item_id'  => $this->selectedLibraryItemId,
+                    'library_media_id' => $this->selectedLibraryMediaId,
+                    'question_type'    => $this->questionType,
+                    'question_text'    => $this->questionText,
+                    'media_url'        => $finalUrl,
+                ]);
+
+                // Delete old options and recreate
+                $question->options()->delete();
+                foreach ($this->questionOptions as $idx => $optText) {
+                    $question->options()->create([
+                        'option_text' => $optText,
+                        'media_url'   => $finalOptionMediaUrls[$idx] ?: null,
+                        'is_correct'  => $idx === (int) $this->questionCorrectIndex,
+                        'sort_order'  => $idx,
+                    ]);
+                }
+            } else {
+                $sortOrder = $quiz->questions()->count() + 1;
+
+                $question = $quiz->questions()->create([
+                    'library_item_id'  => $this->selectedLibraryItemId,
+                    'library_media_id' => $this->selectedLibraryMediaId,
+                    'question_type'    => $this->questionType,
+                    'question_text'    => $this->questionText,
+                    'media_url'        => $finalUrl,
+                    'points'           => 1,
+                    'sort_order'       => $sortOrder,
+                ]);
+
+                foreach ($this->questionOptions as $idx => $optText) {
+                    $question->options()->create([
+                        'option_text' => $optText,
+                        'media_url'   => $finalOptionMediaUrls[$idx] ?: null,
+                        'is_correct'  => $idx === (int) $this->questionCorrectIndex,
+                        'sort_order'  => $idx,
+                    ]);
+                }
+            }
+        });
+
+        $actionText = $this->editingQuestionId ? 'diperbarui' : 'ditambahkan';
+        $this->dispatch('notify', [
+            'type'    => 'success',
+            'message' => 'Soal kuis berhasil ' . $actionText . '!',
+        ]);
 
         $this->showAddQuestionModal = false;
     }
 
-    public function removeQuestion(int $qIdx): void
+    public function removeQuestion(int $qId): void
     {
-        if ($this->managePackageIdx !== null && isset($this->packages[$this->managePackageIdx])) {
-            unset($this->packages[$this->managePackageIdx]['questions'][$qIdx]);
-            $this->packages[$this->managePackageIdx]['questions'] = array_values($this->packages[$this->managePackageIdx]['questions']);
-            $this->packages[$this->managePackageIdx]['questions_count'] = count($this->packages[$this->managePackageIdx]['questions']);
-            $this->persist();
+        $question = QuizQuestion::query()
+            ->where('quiz_id', $this->manageQuizId)
+            ->findOrFail($qId);
 
-            $this->dispatch('notify', [
-                'type'    => 'success',
-                'message' => 'Soal kuis #' . ($qIdx + 1) . ' berhasil dihapus.',
-            ]);
+        $question->delete();
+
+        $this->dispatch('notify', [
+            'type'    => 'success',
+            'message' => 'Soal kuis berhasil dihapus.',
+        ]);
+    }
+
+    private function storeMedia(UploadedFile $file, string $directory): string
+    {
+        $path = $file->store($directory, 'public');
+
+        if ($path === false) {
+            throw new \RuntimeException("Unable to store uploaded media in [{$directory}].");
         }
+
+        return '/storage/'.$path;
     }
 };
 ?>
@@ -324,7 +457,7 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
 <div class="space-y-6">
     <x-admin.page-header
         title="Latihan & Tantangan Kuis"
-        subtitle="Kelola paket evaluasi mandiri, tingkat kesulitan, reward skor, dan butir-butir soal peraga kuis."
+        subtitle="Kelola paket evaluasi mandiri, tingkat kesulitan, reward skor, dan butir-butir soal peraga kuis yang tersimpan di database."
     >
         <x-slot:actions>
             <button
@@ -378,76 +511,64 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-[#E4E4E7] text-sm">
-                    @php
-                        $filtered = array_filter($packages, function ($pkg) {
-                            $matchSearch = empty($this->search)
-                                || str_contains(strtolower($pkg['title'] ?? ''), strtolower($this->search))
-                                || str_contains(strtolower($pkg['subtitle'] ?? ''), strtolower($this->search));
-
-                            $matchLevel = $this->levelFilter === 'all' || ($pkg['level'] ?? '') === $this->levelFilter;
-
-                            return $matchSearch && $matchLevel;
-                        });
-                    @endphp
-
-                    @forelse ($filtered as $idx => $pkg)
+                    @forelse ($this->quizzes as $quiz)
                         <tr class="hover:bg-zinc-50/70 transition-colors">
                             <td class="py-4 px-5">
                                 <div class="flex items-center gap-3">
                                     {{-- Ikon / Thumbnail Kuis --}}
                                     <div class="w-11 h-11 rounded-2xl bg-[#FFF8E6] border-2 border-[#F9B92F] flex items-center justify-center text-xl shrink-0 overflow-hidden shadow-2xs">
-                                        @if (!empty($pkg['icon_url']))
-                                            <img src="{{ $pkg['icon_url'] }}" alt="{{ $pkg['title'] }}" class="w-full h-full object-cover" />
+                                        @if (!empty($quiz->icon_url))
+                                            <img src="{{ $quiz->icon_url }}" alt="{{ $quiz->title }}" class="w-full h-full object-cover" />
                                         @else
-                                            {{ $pkg['icon_emoji'] ?? '🎯' }}
+                                            {{ $quiz->icon_emoji ?: '🎯' }}
                                         @endif
                                     </div>
                                     <div class="min-w-0">
-                                        <h3 class="font-extrabold text-sm text-[#1C1C1E]">{{ $pkg['title'] }}</h3>
-                                        @if (!empty($pkg['subtitle']))
-                                            <p class="text-xs text-[#71717A] font-medium truncate max-w-md">{{ $pkg['subtitle'] }}</p>
+                                        <h3 class="font-extrabold text-sm text-[#1C1C1E]">{{ $quiz->title }}</h3>
+                                        @if (!empty($quiz->description))
+                                            <p class="text-xs text-[#71717A] font-medium truncate max-w-md">{{ $quiz->description }}</p>
                                         @endif
                                     </div>
                                 </div>
                             </td>
                             <td class="py-4 px-4">
                                 <span class="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-[#F4F4F5] text-[#52525B]">
-                                    {{ $pkg['level'] }}
+                                    {{ $quiz->level }}
                                 </span>
                             </td>
                             <td class="py-4 px-4 text-xs font-extrabold text-[#1C1C1E]">
                                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F4F4F5]">
-                                    {{ count($pkg['questions'] ?? []) }} Soal
+                                    {{ $quiz->questions_count }} Soal
                                 </span>
                             </td>
                             <td class="py-4 px-4 text-xs font-extrabold text-[#C98A06]">
-                                +{{ $pkg['xp_reward'] }} XP
+                                +{{ $quiz->xp_reward }} XP
                             </td>
                             <td class="py-4 px-4">
-                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border {{ $pkg['is_active'] ? 'bg-[#F0FDF4] border-[#86EFAC] text-[#15803D]' : 'bg-zinc-100 border-[#E4E4E7] text-[#71717A]' }}">
-                                    {{ $pkg['is_active'] ? 'Aktif' : 'Draft' }}
+                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border {{ $quiz->isPublished() ? 'bg-[#F0FDF4] border-[#86EFAC] text-[#15803D]' : 'bg-zinc-100 border-[#E4E4E7] text-[#71717A]' }}">
+                                    {{ $quiz->isPublished() ? 'Aktif' : 'Draft' }}
                                 </span>
                             </td>
                             <td class="py-4 px-5 text-right space-x-1.5">
                                 <button
                                     type="button"
-                                    wire:click="openManageQuestions({{ $idx }})"
+                                    wire:click="openManageQuestions({{ $quiz->id }})"
                                     class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#FFF8E6] border border-[#F9B92F] text-xs font-extrabold text-[#C98A06] hover:bg-[#F9B92F] hover:text-[#1C1C1E] transition-colors cursor-pointer"
                                     title="Kelola & Tambah Soal Kuis"
                                 >
-                                    Kelola Soal ({{ count($pkg['questions'] ?? []) }}) →
+                                    Kelola Soal ({{ $quiz->questions_count }}) →
                                 </button>
                                 <button
                                     type="button"
-                                    wire:click="toggleStatus({{ $idx }})"
+                                    wire:click="toggleStatus({{ $quiz->id }})"
                                     class="px-2.5 py-1.5 rounded-xl border border-[#E4E4E7] hover:bg-zinc-100 text-xs font-extrabold cursor-pointer transition-colors"
-                                    title="{{ $pkg['is_active'] ? 'Nonaktifkan' : 'Publikasikan' }}"
+                                    title="{{ $quiz->isPublished() ? 'Nonaktifkan' : 'Publikasikan' }}"
                                 >
-                                    {{ $pkg['is_active'] ? 'Nonaktifkan' : 'Publikasikan' }}
+                                    {{ $quiz->isPublished() ? 'Nonaktifkan' : 'Publikasikan' }}
                                 </button>
                                 <button
                                     type="button"
-                                    wire:click="openEdit({{ $idx }})"
+                                    wire:click="openEdit({{ $quiz->id }})"
                                     class="px-2.5 py-1.5 rounded-xl border border-[#E4E4E7] hover:bg-zinc-100 text-xs font-extrabold text-[#52525B] cursor-pointer"
                                     title="Edit Paket"
                                 >
@@ -455,8 +576,8 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
                                 </button>
                                 <button
                                     type="button"
-                                    wire:click="deletePackage({{ $idx }})"
-                                    wire:confirm="Yakin ingin menghapus paket kuis '{{ $pkg['title'] }}'?"
+                                    wire:click="deletePackage({{ $quiz->id }})"
+                                    wire:confirm="Yakin ingin menghapus paket kuis '{{ $quiz->title }}'?"
                                     class="px-2.5 py-1.5 rounded-xl border border-[#FCA5A5] bg-[#FEF2F2] hover:bg-[#FEE2E2] text-xs font-extrabold text-[#B91C1C] cursor-pointer"
                                     title="Hapus Paket"
                                 >
@@ -479,7 +600,7 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
     {{-- Modal Tambah / Edit Paket Kuis --}}
     <x-admin.latihan-kuis.package-modal
         :show="$showModal"
-        :edit-index="$editIdx"
+        :edit-index="$editingQuizId"
         :icon-file="$iconFile"
         :icon-url="$iconUrl"
     />
@@ -487,14 +608,20 @@ new #[Layout('layouts::admin')] #[Title('Kelola Latihan Kuis — Admin Signify')
     {{-- Modal Kelola Daftar Butir Soal --}}
     <x-admin.latihan-kuis.questions-modal
         :show="$showQuestionsModal"
-        :active-package="$this->activePackage"
+        :active-package="$this->activeQuiz"
     />
 
-    {{-- Modal Form Input Soal Baru --}}
+    {{-- Modal Form Input Soal Baru / Edit Soal --}}
     <x-admin.latihan-kuis.add-question-modal
         :show="$showAddQuestionModal"
+        :editing-question-id="$editingQuestionId"
         :media-file="$questionMediaFile"
         :media-url="$questionMediaUrl"
         :correct-index="$questionCorrectIndex"
+        :question-type="$questionType"
+        :kamus-items="$this->kamusItems"
+        :selected-library-item-id="$selectedLibraryItemId"
+        :option-media-files="$questionOptionMediaFiles"
+        :option-media-urls="$questionOptionMediaUrls"
     />
 </div>

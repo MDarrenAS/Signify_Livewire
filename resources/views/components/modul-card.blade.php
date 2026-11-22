@@ -95,8 +95,11 @@
                     </h3>
 
                     @if ($status === 'completed')
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-lg bg-[#E9F9EF] border-2 border-[#22B05B] text-[11px] font-extrabold text-[#15803D] tracking-wide uppercase">
-                            TUNTAS
+                        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-[#E9F9EF] border-2 border-[#22B05B] text-[11px] font-extrabold text-[#15803D] tracking-wide uppercase">
+                            <span>✓ TUNTAS</span>
+                            @if (isset($modul['average_score']))
+                                <span>• NILAI: {{ $modul['average_score'] }}%</span>
+                            @endif
                         </span>
                     @elseif ($status === 'in_progress')
                         <span class="inline-flex items-center px-2 py-0.5 rounded-lg bg-white border-2 border-[#F9B92F] group-hover/card:border-[#D99B06] text-[11px] font-extrabold text-[#C98A06] tracking-wide uppercase transition-colors">
@@ -119,9 +122,9 @@
 
                         <span class="text-xs font-extrabold {{ $status === 'completed' ? 'text-[#15803D]' : 'text-[#1C1C1E]' }}">
                             @if ($status === 'completed')
-                                Tuntas 100% {{ !empty($modul['xp_reward']) ? '• +' . (int) $modul['xp_reward'] . ' XP' : '' }}
+                                Tuntas 100% {{ isset($modul['average_score']) ? '• Nilai: ' . $modul['average_score'] . '%' : '' }} {{ !empty($modul['xp_reward']) ? '• +' . (int) $modul['xp_reward'] . ' XP' : '' }}
                             @elseif ($status === 'in_progress')
-                                {{ $progress }}% Selesai ({{ $completedParts }}/{{ $totalParts }} Bagian)
+                                {{ $progress }}% Selesai ({{ $completedParts }}/{{ $totalParts }} Bagian) {{ isset($modul['average_score']) ? '• Nilai Kuis: ' . $modul['average_score'] . '%' : '' }}
                             @else
                                 0/{{ $totalParts }} Bagian • Belum Dimulai
                             @endif

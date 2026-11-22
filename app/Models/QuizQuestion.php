@@ -2,66 +2,104 @@
 
 namespace App\Models;
 
+use Database\Factories\QuizQuestionFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
+/**
+ * @use HasFactory<QuizQuestionFactory>
+ */
+#[Fillable([
+    'quiz_id',
+    'library_item_id',
+    'library_media_id',
+    'question_text',
+    'question_type',
+    'media_url',
+    'points',
+    'sort_order',
+    'explanation',
+])]
 class QuizQuestion extends Model
 {
     use HasFactory;
 
-    protected $table = 'quiz_questions';
-
-    /**
-     * @var list<string>
-     */
-    protected $fillable = [
-        'quiz_id',
-        'library_item_id',
-        'library_media_id',
-        'question_text',
-        'question_type',
-        'points',
-        'sort_order',
-        'explanation',
-    ];
-
-    /**
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
-            'quiz_id' => 'integer',
-            'library_item_id' => 'integer',
-            'library_media_id' => 'integer',
-            'points' => 'float',
+            'points' => 'decimal:2',
             'sort_order' => 'integer',
         ];
     }
 
-    /**
-     * @return BelongsTo<Quiz, $this>
-     */
     public function quiz(): BelongsTo
     {
         return $this->belongsTo(Quiz::class, 'quiz_id');
     }
 
-    /**
-     * @return BelongsTo<LibraryItem, $this>
-     */
     public function libraryItem(): BelongsTo
     {
         return $this->belongsTo(LibraryItem::class, 'library_item_id');
     }
 
-    /**
-     * @return HasMany<QuizOption, $this>
-     */
+    public function media(): BelongsTo
+    {
+        return $this->belongsTo(LibraryMedia::class, 'library_media_id');
+    }
+
     public function options(): HasMany
     {
-        return $this->hasMany(QuizOption::class, 'question_id')->orderBy('sort_order')->orderBy('id');
+        return $this->hasMany(QuizOption::class, 'question_id')->orderBy('sort_order');
+    }
+
+    public function correctOption(): HasOne
+    {
+        return $this->hasOne(QuizOption::class, 'question_id')->where('is_correct', true);
+    }
+
+    public function getEffectiveMediaUrl(): ?string
+    {
+        if ($this->media) {
+            try {
+                return $this->media->temporaryUrl();
+            } catch (\Throwable) {
+                return $this->media->storage_path ? '/storage/'.$this->media->storage_path : null;
+            }
+        }
+
+        return $this->media_url;
+    }
+
+    protected function question(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => $this->question_text,
+        );
+    }
+
+    protected function videoUrl(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => $this->getEffectiveMediaUrl(),
+        );
+    }
+
+    protected function optionsList(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => $this->options->map(fn ($o) => $o->getEffectiveText())->all(),
+        );
+    }
+
+    protected function correctIndex(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => (int) ($this->options->values()->search(fn ($opt) => $opt->is_correct) ?: 0),
+        );
     }
 }
