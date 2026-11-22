@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\UserModuleProgress;
 use App\Support\MockCurriculum;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -22,6 +23,23 @@ new #[Title('Modul Belajar')] class extends Component
     {
         $completedKeys = (array) session('completed_parts', []);
         $quizScores    = (array) session('quiz_scores', []);
+
+        if (auth()->check()) {
+            $dbProgress = UserModuleProgress::where('user_id', auth()->id())
+                ->where('is_completed', true)
+                ->get();
+
+            foreach ($dbProgress as $prog) {
+                $k = $prog->modul_slug . ':' . $prog->part_slug;
+                if (! in_array($k, $completedKeys, true)) {
+                    $completedKeys[] = $k;
+                }
+                if ($prog->score !== null) {
+                    $quizScores[$k] = max((int) ($quizScores[$k] ?? 0), (int) round($prog->score));
+                }
+            }
+        }
+
         $prevModulDone = true;
 
         return collect(MockCurriculum::getUnits())->map(function (array $unit) use ($completedKeys, $quizScores, &$prevModulDone) {
@@ -37,7 +55,7 @@ new #[Title('Modul Belajar')] class extends Component
 
                         if (($part['type'] ?? 'lesson') === 'quiz' && isset($quizScores[$key])) {
                             $score = (int) $quizScores[$key];
-                            $part['badge_text'] = $score >= 100 ? 'Skor 100 • Sempurna' : "Skor {$score}";
+                            $part['badge_text'] = $score >= 100 ? 'Skor 100 • Sempurna' : "Skor {$score}%";
                         }
                     }
 
@@ -51,11 +69,21 @@ new #[Title('Modul Belajar')] class extends Component
                 $isModulDone  = $totalParts > 0 && $doneCount === $totalParts;
                 $isInProgress = ! $isLocked && $doneCount > 0 && ! $isModulDone;
 
+                $modulQuizScores = $parts->where('type', 'quiz')
+                    ->map(fn ($p) => $quizScores[$modul['slug'] . ':' . $p['slug']] ?? null)
+                    ->filter(fn ($s) => $s !== null);
+
+                $averageScore = $modulQuizScores->isNotEmpty()
+                    ? (int) round($modulQuizScores->average())
+                    : null;
+
                 $prevModulDone = ! $isLocked && $isModulDone;
 
                 return array_merge($modul, [
-                    'status'      => $isLocked ? 'locked' : ($isModulDone ? 'completed' : null),
-                    'tag'         => (! $isLocked && ! $isModulDone) ? ($modul['tag'] ?? 'SEDANG AKTIF') : ($modul['tag'] ?? null),
+                    'status'        => $isLocked ? 'locked' : ($isModulDone ? 'completed' : null),
+                    'tag'           => (! $isLocked && ! $isModulDone) ? ($modul['tag'] ?? 'SEDANG AKTIF') : ($modul['tag'] ?? null),
+                    'average_score' => $averageScore,
+                    'is_completed'  => $isModulDone,
                     'description' => $isLocked
                         ? ($modul['description'] ?? 'Terkunci • Selesaikan modul sebelumnya terlebih dahulu')
                         : (str_starts_with($modul['description'] ?? '', 'Terkunci')

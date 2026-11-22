@@ -4,9 +4,17 @@
 ])
 
 @if ($activePackage)
+    @php
+        $pkgTitle = is_array($activePackage) ? ($activePackage['title'] ?? '') : $activePackage->title;
+        $pkgLevel = is_array($activePackage) ? ($activePackage['level'] ?? '') : $activePackage->level;
+        $pkgXp = is_array($activePackage) ? ($activePackage['xp_reward'] ?? 50) : $activePackage->xp_reward;
+        $questions = is_array($activePackage) ? ($activePackage['questions'] ?? []) : $activePackage->questions;
+        $questionsCount = is_countable($questions) ? count($questions) : $questions->count();
+    @endphp
+
     <x-admin.modal
         :show="$show"
-        title="Kelola Soal: {{ $activePackage['title'] }}"
+        title="Kelola Soal: {{ $pkgTitle }}"
         close-action="$set('showQuestionsModal', false)"
         max-width="max-w-2xl"
     >
@@ -15,10 +23,10 @@
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-[#FFF8E6] border border-[#F9B92F] rounded-2xl">
                 <div>
                     <span class="text-[10px] font-extrabold uppercase tracking-wide text-[#C98A06]">
-                        Tingkat {{ $activePackage['level'] }} • +{{ $activePackage['xp_reward'] }} XP
+                        Tingkat {{ $pkgLevel }} • +{{ $pkgXp }} XP
                     </span>
                     <h4 class="text-sm font-extrabold text-[#1C1C1E]">Daftar Butir Pertanyaan Kuis</h4>
-                    <p class="text-xs text-[#71717A]">{{ count($activePackage['questions'] ?? []) }} pertanyaan terdaftar saat ini</p>
+                    <p class="text-xs text-[#71717A]">{{ $questionsCount }} pertanyaan terdaftar saat ini</p>
                 </div>
 
                 <button
@@ -32,10 +40,14 @@
 
             {{-- Daftar Butir Soal --}}
             <div class="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
-                @forelse ($activePackage['questions'] ?? [] as $qIdx => $q)
+                @forelse ($questions as $qIdx => $q)
                     @php
-                        $media = $q['video_url'] ?? '';
-                        $isImgOrGif = preg_match('/\.(gif|png|jpe?g|webp|svg)$/i', $media);
+                        $qId = is_object($q) ? $q->id : ($q['id'] ?? $qIdx);
+                        $qText = is_object($q) ? $q->question_text : ($q['question'] ?? '');
+                        $qType = is_object($q) ? $q->question_type : ($q['question_type'] ?? 'sign_to_word');
+                        $media = is_object($q) ? $q->getEffectiveMediaUrl() : ($q['video_url'] ?? '');
+                        $isImgOrGif = $media ? preg_match('/\.(gif|png|jpe?g|webp|svg)$/i', $media) : false;
+                        $options = is_object($q) ? $q->options : ($q['options'] ?? []);
                     @endphp
                     <div class="p-4 rounded-2xl border-2 border-[#E4E4E7] bg-white hover:border-[#F9B92F] transition-all space-y-2">
                         <div class="flex items-start justify-between gap-3">
@@ -56,29 +68,56 @@
                                 @endif
 
                                 <div>
-                                    <span class="text-[10px] font-extrabold uppercase text-[#C98A06]">Soal #{{ $qIdx + 1 }}</span>
-                                    <p class="text-xs sm:text-sm font-extrabold text-[#1C1C1E] leading-snug">{{ $q['question'] }}</p>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-[10px] font-extrabold uppercase text-[#C98A06]">Soal #{{ $qIdx + 1 }}</span>
+                                        @if ($qType === 'sign_to_word')
+                                            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">Isyarat ➔ Kata</span>
+                                        @elseif ($qType === 'word_to_sign')
+                                            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Kata ➔ Isyarat</span>
+                                        @elseif ($qType === 'media_to_sign')
+                                            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">Media ➔ Isyarat</span>
+                                        @endif
+                                    </div>
+                                    <p class="text-xs sm:text-sm font-extrabold text-[#1C1C1E] leading-snug">{{ $qText }}</p>
                                 </div>
                             </div>
 
-                            <button
-                                type="button"
-                                wire:click="removeQuestion({{ $qIdx }})"
-                                wire:confirm="Yakin ingin menghapus soal ini?"
-                                class="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 text-xs font-bold cursor-pointer"
-                                title="Hapus Soal"
-                            >
-                                ✕
-                            </button>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <button
+                                    type="button"
+                                    wire:click="openEditQuestion({{ $qId }})"
+                                    class="p-1.5 rounded-lg text-zinc-400 hover:text-[#C98A06] hover:bg-[#FFF8E6] text-xs font-bold cursor-pointer"
+                                    title="Edit Soal"
+                                >
+                                    ✎
+                                </button>
+                                <button
+                                    type="button"
+                                    wire:click="removeQuestion({{ $qId }})"
+                                    wire:confirm="Yakin ingin menghapus soal ini?"
+                                    class="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 text-xs font-bold cursor-pointer"
+                                    title="Hapus Soal"
+                                >
+                                    ✕
+                                </button>
+                            </div>
                         </div>
 
                         {{-- Pilihan Opsi & Kunci --}}
                         <div class="grid grid-cols-2 gap-1.5 pt-1">
-                            @foreach ($q['options'] ?? [] as $oIdx => $opt)
-                                @php $isCorrect = (int) ($q['correct_index'] ?? 0) === $oIdx; @endphp
+                            @foreach ($options as $oIdx => $opt)
+                                @php
+                                    $isCorrect = is_object($opt) ? $opt->is_correct : ((int) ($q['correct_index'] ?? 0) === $oIdx);
+                                    $optText = is_object($opt) ? $opt->getEffectiveText() : $opt;
+                                    $optMedia = is_object($opt) ? $opt->getEffectiveMediaUrl() : null;
+                                @endphp
                                 <div class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border flex items-center gap-1.5 {{ $isCorrect ? 'bg-[#F0FDF4] border-[#22B05B] text-[#15803D] font-extrabold' : 'bg-zinc-50 border-[#E4E4E7] text-[#52525B]' }}">
                                     <span class="font-bold">{{ chr(65 + $oIdx) }}.</span>
-                                    <span class="truncate">{{ $opt }}</span>
+                                    @if ($optMedia)
+                                        <span class="truncate">🎬 {{ $optText ?: 'Pilihan Isyarat ' . chr(65 + $oIdx) }}</span>
+                                    @else
+                                        <span class="truncate">{{ $optText }}</span>
+                                    @endif
                                     @if ($isCorrect) <span class="ml-auto text-[#22B05B]">✓</span> @endif
                                 </div>
                             @endforeach

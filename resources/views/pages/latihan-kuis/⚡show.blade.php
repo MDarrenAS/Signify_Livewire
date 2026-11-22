@@ -1,346 +1,358 @@
-
 <?php
 
-use Illuminate\Support\Str;
+use App\Models\Quiz;
+use App\Models\QuizAttempt;
+use App\Models\QuizOption;
+use App\Models\QuizQuestion;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-new #[Title('Kerjakan Kuis')] class extends Component
+new #[Title('Tantangan Kuis BISINDO')] class extends Component
 {
-    public string $slug = '';
-    public array $package = [];
-    public int $questionIndex = 0;
-    public ?int $selectedOption = null;
-    public bool $answered = false;
-    public bool $finished = false;
-    public int $correctAnswers = 0;
+    public string $slug;
+    public int $currentIndex = 0;
+    public ?int $selectedOptionId = null;
+    public bool $isAnswerChecked = false;
+    public bool $isCurrentCorrect = false;
+    public int $correctCount = 0;
+    public bool $isFinished = false;
 
     public function mount(string $slug): void
     {
         $this->slug = $slug;
-
-        $packages = session('admin_quiz_packages', []);
-
-        $package = collect($packages)->first(function ($item) use ($slug) {
-            return Str::slug($item['title'] ?? '') === $slug
-                && ($item['is_active'] ?? false)
-                && count($item['questions'] ?? []) > 0;
-        });
-
-        abort_if(!$package, 404);
-
-        $this->package = $package;
     }
 
-    public function selectOption(int $index): void
+    #[Computed]
+    public function quiz(): Quiz
     {
-        if ($this->answered || $this->finished) {
+        return Quiz::published()
+            ->where('slug', $this->slug)
+            ->with([
+                'questions.options',
+                'questions.libraryItem',
+                'questions.media',
+            ])
+            ->firstOrFail();
+    }
+
+    #[Computed]
+    public function currentQuestion(): ?QuizQuestion
+    {
+        return $this->quiz->questions->get($this->currentIndex);
+    }
+
+    public function selectOption(int $optionId): void
+    {
+        if ($this->isAnswerChecked) {
             return;
         }
 
-        if (!isset($this->package['questions'][$this->questionIndex]['options'][$index])) {
-            return;
-        }
-
-        $this->selectedOption = $index;
+        $this->selectedOptionId = $optionId;
     }
 
     public function checkAnswer(): void
     {
-        if ($this->selectedOption === null || $this->answered) {
+        if (! $this->selectedOptionId || $this->isAnswerChecked) {
             return;
         }
 
-        $question = $this->package['questions'][$this->questionIndex];
+        $selectedOption = QuizOption::find($this->selectedOptionId);
+        $this->isCurrentCorrect = (bool) ($selectedOption?->is_correct);
 
-        if ($this->selectedOption === (int) ($question['correct_index'] ?? -1)) {
-            $this->correctAnswers++;
+        if ($this->isCurrentCorrect) {
+            $this->correctCount++;
         }
 
-        $this->answered = true;
+        $this->isAnswerChecked = true;
     }
 
     public function nextQuestion(): void
     {
-        if (!$this->answered) {
+        $totalQuestions = $this->quiz->questions->count();
+
+        if ($this->currentIndex + 1 < $totalQuestions) {
+            $this->currentIndex++;
+            $this->selectedOptionId = null;
+            $this->isAnswerChecked  = false;
+            $this->isCurrentCorrect = false;
+        } else {
+            $this->isFinished = true;
+            $this->saveAttempt();
+        }
+    }
+
+    public function saveAttempt(): void
+    {
+        if (! auth()->check()) {
             return;
         }
 
-        if ($this->questionIndex < count($this->package['questions']) - 1) {
-            $this->questionIndex++;
-            $this->selectedOption = null;
-            $this->answered = false;
-        } else {
-            $this->finished = true;
-        }
+        $totalQuestions = $this->quiz->questions->count();
+        $percentage = $totalQuestions > 0 ? round(($this->correctCount / $totalQuestions) * 100) : 0;
+        $isPassed = $percentage >= (float) $this->quiz->passing_score;
+        $pointsEarned = $isPassed ? (float) $this->quiz->xp_reward : round($this->quiz->xp_reward * ($percentage / 100));
+
+        $attemptNumber = QuizAttempt::where('user_id', auth()->id())
+            ->where('quiz_id', $this->quiz->id)
+            ->count() + 1;
+
+        QuizAttempt::create([
+            'user_id' => auth()->id(),
+            'quiz_id' => $this->quiz->id,
+            'status' => 'submitted',
+            'score' => $percentage,
+            'points_earned' => $pointsEarned,
+            'points_total' => $this->quiz->xp_reward,
+            'passed' => $isPassed,
+            'attempt_number' => $attemptNumber,
+            'started_at' => now(),
+            'submitted_at' => now(),
+        ]);
     }
 
-    public function getScoreProperty(): int
+    public function retry(): void
     {
-        $total = count($this->package['questions'] ?? []);
-
-        return $total > 0
-            ? (int) round(($this->correctAnswers / $total) * 100)
-            : 0;
-    }
-
-    public function restartQuiz(): void
-    {
-        $this->questionIndex = 0;
-        $this->selectedOption = null;
-        $this->answered = false;
-        $this->finished = false;
-        $this->correctAnswers = 0;
+        $this->currentIndex     = 0;
+        $this->selectedOptionId = null;
+        $this->isAnswerChecked  = false;
+        $this->isCurrentCorrect = false;
+        $this->correctCount     = 0;
+        $this->isFinished       = false;
     }
 };
 ?>
 
-<div class="mx-auto max-w-4xl space-y-6 pb-10">
-
-    {{-- HEADER --}}
-    <div class="flex items-center justify-between gap-3">
-        <a href="{{ route('latihan.index') }}" wire:navigate
-            class="inline-flex items-center gap-2 text-sm font-bold text-[#828282] transition hover:text-[#1C1C1E]">
-            <span>←</span>
-            Kembali
+<div class="max-w-3xl mx-auto space-y-6 pb-12">
+    {{-- Top Bar: Kembali, Progress & XP --}}
+    <div class="flex items-center justify-between gap-4">
+        <a
+            href="{{ route('latihan.index') }}"
+            wire:navigate
+            class="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#71717A] hover:text-[#1C1C1E] transition-colors"
+        >
+            ← Kembali ke Daftar Kuis
         </a>
 
-        <span class="rounded-full bg-[#FFF3D5] px-3 py-1.5 text-xs font-extrabold text-[#C98A06]">
-            +{{ $package['xp_reward'] ?? 0 }} XP
-        </span>
+        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFF8E6] border border-[#F9B92F] text-xs font-extrabold text-[#C98A06]">
+            <span>{{ $this->quiz->icon_emoji ?: '🎯' }}</span>
+            <span>+{{ $this->quiz->xp_reward }} XP</span>
+        </div>
     </div>
 
-    {{-- QUIZ CONTENT --}}
-    @if (!$finished)
-
+    @if ($this->quiz->questions->isEmpty())
+        <div class="p-12 text-center border-2 border-dashed border-[#E4E4E7] rounded-3xl bg-white space-y-3">
+            <span class="text-4xl block">📝</span>
+            <h3 class="text-base font-extrabold text-[#1C1C1E]">Belum Ada Soal</h3>
+            <p class="text-xs text-[#71717A]">Paket kuis ini belum memiliki pertanyaan yang terdaftar.</p>
+            <a href="{{ route('latihan.index') }}" wire:navigate class="inline-block px-4 py-2 rounded-xl bg-[#F9B92F] text-xs font-extrabold text-[#1C1C1E]">
+                Kembali
+            </a>
+        </div>
+    @elseif ($isFinished)
+        {{-- Layar Selesai Kuis --}}
         @php
-            $questions = $package['questions'];
-            $question = $questions[$questionIndex];
-            $totalQuestions = count($questions);
-            $progress = (($questionIndex + 1) / $totalQuestions) * 100;
-            $mediaUrl = $question['video_url'] ?? '';
-            $extension = strtolower(pathinfo(parse_url($mediaUrl, PHP_URL_PATH) ?? '', PATHINFO_EXTENSION));
-            $isVideo = in_array($extension, ['mp4', 'webm']);
+            $totalQuestions = $this->quiz->questions->count();
+            $percentage = $totalQuestions > 0 ? round(($correctCount / $totalQuestions) * 100) : 0;
+            $isPassed = $percentage >= (float) $this->quiz->passing_score;
         @endphp
 
-        {{-- PACKAGE INFO --}}
-        <div class="space-y-2">
-            <p class="text-xs font-bold uppercase tracking-wider text-[#C98A06]">
-                {{ $package['level'] ?? 'Pemula' }}
-            </p>
-
-            <h1 class="text-xl font-extrabold text-[#1C1C1E] sm:text-2xl">
-                {{ $package['title'] }}
-            </h1>
-
-            <p class="text-sm text-[#828282]">
-                {{ $package['subtitle'] ?? '' }}
-            </p>
-        </div>
-
-        {{-- PROGRESS --}}
-        <div class="space-y-2">
-            <div class="flex items-center justify-between text-xs font-bold">
-                <span class="text-[#52525B]">
-                    Pertanyaan {{ $questionIndex + 1 }} dari {{ $totalQuestions }}
-                </span>
-
-                <span class="text-[#C98A06]">
-                    {{ (int) $progress }}%
-                </span>
+        <div class="bg-white border-2 border-b-4 border-[#E4E4E7] rounded-3xl p-8 sm:p-12 text-center space-y-6 shadow-sm">
+            <div class="w-24 h-24 mx-auto rounded-3xl {{ $isPassed ? 'bg-[#F0FDF4] border-2 border-[#86EFAC]' : 'bg-[#FFF8E6] border-2 border-[#F9B92F]' }} flex items-center justify-center text-5xl">
+                {{ $isPassed ? '🎉' : '💪' }}
             </div>
 
-            <div class="h-2.5 overflow-hidden rounded-full bg-[#F0F0F0]">
-                <div class="h-full rounded-full bg-[#F9B92F] transition-all duration-300"
-                    style="width: {{ $progress }}%">
+            <div class="space-y-2">
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-[#1C1C1E]">
+                    {{ $isPassed ? 'Luar Biasa, Kuis Selesai!' : 'Tetap Semangat, Coba Lagi!' }}
+                </h2>
+                <p class="text-sm font-medium text-[#71717A]">
+                    Kamu telah menyelesaikan paket <span class="font-extrabold text-[#1C1C1E]">{{ $this->quiz->title }}</span>
+                </p>
+            </div>
+
+            {{-- Stat Box --}}
+            <div class="grid grid-cols-3 gap-3 max-w-md mx-auto pt-2">
+                <div class="p-4 rounded-2xl bg-[#FAFAFA] border border-[#E4E4E7] space-y-1">
+                    <span class="text-[10px] font-extrabold uppercase text-[#71717A]">Benar</span>
+                    <p class="text-xl font-extrabold text-[#22B05B]">{{ $correctCount }}/{{ $totalQuestions }}</p>
+                </div>
+                <div class="p-4 rounded-2xl bg-[#FAFAFA] border border-[#E4E4E7] space-y-1">
+                    <span class="text-[10px] font-extrabold uppercase text-[#71717A]">Akurasi</span>
+                    <p class="text-xl font-extrabold text-[#1C1C1E]">{{ $percentage }}%</p>
+                </div>
+                <div class="p-4 rounded-2xl bg-[#FAFAFA] border border-[#E4E4E7] space-y-1">
+                    <span class="text-[10px] font-extrabold uppercase text-[#71717A]">XP Didapat</span>
+                    <p class="text-xl font-extrabold text-[#C98A06]">+{{ $isPassed ? $this->quiz->xp_reward : round($this->quiz->xp_reward * ($percentage / 100)) }}</p>
                 </div>
             </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
+                <button
+                    type="button"
+                    wire:click="retry"
+                    class="w-full sm:w-auto px-6 py-3 rounded-xl border-2 border-[#E4E4E7] hover:bg-zinc-100 text-xs font-extrabold text-[#52525B] transition-all cursor-pointer"
+                >
+                    🔄 Ulangi Kuis
+                </button>
+                <a
+                    href="{{ route('latihan.index') }}"
+                    wire:navigate
+                    class="w-full sm:w-auto px-8 py-3 rounded-xl bg-[#F9B92F] hover:bg-[#fabf45] border-2 border-b-4 border-[#C98A06] active:translate-y-0.5 active:border-b-2 text-xs font-extrabold text-[#1C1C1E] transition-all shadow-xs"
+                >
+                    Pilih Kuis Lain →
+                </a>
+            </div>
+        </div>
+    @else
+        {{-- Player Soal Kuis Aktif --}}
+        @php
+            $q = $this->currentQuestion;
+            $totalQuestions = $this->quiz->questions->count();
+            $progressPercent = $totalQuestions > 0 ? round((($currentIndex + 1) / $totalQuestions) * 100) : 0;
+            $media = $q?->getEffectiveMediaUrl();
+            $isImgOrGif = $media ? preg_match('/\.(gif|png|jpe?g|webp|svg)$/i', $media) : false;
+        @endphp
+
+        {{-- Progress Bar --}}
+        <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs font-extrabold text-[#71717A]">
+                <span>Pertanyaan {{ $currentIndex + 1 }} dari {{ $totalQuestions }}</span>
+                <span>{{ $progressPercent }}%</span>
+            </div>
+            <div class="w-full h-3 rounded-full bg-[#E4E4E7] overflow-hidden p-0.5">
+                <div class="h-full rounded-full bg-[#F9B92F] transition-all duration-300" style="width: {{ $progressPercent }}%"></div>
+            </div>
         </div>
 
-        {{-- QUESTION CARD --}}
-        <section class="space-y-6 rounded-2xl border-2 border-b-4 border-[#E4E4E7] bg-white p-5 sm:p-8">
-
-            <div class="space-y-3">
-                <span class="text-xs font-extrabold uppercase tracking-wider text-[#C98A06]">
-                    Pertanyaan
+        {{-- Kartu Soal --}}
+        <div class="bg-white border-2 border-b-4 border-[#E4E4E7] rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xs">
+            {{-- Pertanyaan Header --}}
+            <div class="space-y-2">
+                <span class="inline-block px-2.5 py-0.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wide bg-[#F4F4F5] text-[#52525B]">
+                    @if ($q->question_type === 'sign_to_word')
+                        🎬 Tebak Kata dari Isyarat
+                    @elseif ($q->question_type === 'word_to_sign')
+                        🔤 Cari Gerakan Isyarat
+                    @elseif ($q->question_type === 'media_to_sign')
+                        🖼️ Tebak Isyarat dari Gambar
+                    @else
+                        Pilihan Ganda
+                    @endif
                 </span>
 
-                <h2 class="text-base font-extrabold leading-relaxed text-[#1C1C1E] sm:text-lg">
-                    {{ $question['question'] }}
+                <h2 class="text-lg sm:text-xl font-extrabold text-[#1C1C1E] leading-snug">
+                    {{ $q->question_text }}
                 </h2>
             </div>
 
-            {{-- MEDIA --}}
-            @if ($mediaUrl)
-                <div class="overflow-hidden rounded-2xl border-2 border-[#E4E4E7] bg-[#FAFAFA]">
-                    @if ($isVideo)
-                        <video controls preload="metadata" class="max-h-[350px] w-full object-contain">
-                            <source src="{{ $mediaUrl }}" type="video/{{ $extension }}">
-                            Browser tidak mendukung video.
-                        </video>
+            {{-- Media Soal (Jika Tipe A atau B atau ada media URL) --}}
+            @if (!empty($media))
+                <div class="rounded-2xl overflow-hidden bg-[#18181B] aspect-video max-h-72 flex items-center justify-center p-2 shadow-inner">
+                    @if ($isImgOrGif)
+                        <img src="{{ $media }}" alt="Peraga Kuis" class="h-full object-contain" />
                     @else
-                        <img src="{{ $mediaUrl }}"
-                            alt="Media pertanyaan"
-                            class="mx-auto max-h-[350px] w-full object-contain">
+                        <video src="{{ $media }}" controls autoplay loop muted playsinline class="h-full object-contain"></video>
                     @endif
                 </div>
             @endif
 
-            {{-- ANSWER OPTIONS --}}
-            <div class="space-y-3">
-                <p class="text-sm font-extrabold text-[#52525B]">
-                    Pilih jawaban yang benar:
-                </p>
-
-                @foreach ($question['options'] as $index => $option)
+            {{-- Pilihan Jawaban A, B, C, D --}}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                @foreach ($q->options as $idx => $opt)
                     @php
-                        $isCorrect = $index === (int) ($question['correct_index'] ?? -1);
-                        $isSelected = $selectedOption === $index;
+                        $isSelected = $selectedOptionId === $opt->id;
+                        $optText = $opt->getEffectiveText();
+                        $optMedia = $opt->getEffectiveMediaUrl();
+                        $optIsImg = $optMedia ? preg_match('/\.(gif|png|jpe?g|webp|svg)$/i', $optMedia) : false;
+
+                        // State styling saat jawaban dicek
+                        $borderClass = 'border-[#E4E4E7] hover:border-[#F9B92F] bg-white';
+                        if ($isAnswerChecked) {
+                            if ($opt->is_correct) {
+                                $borderClass = 'border-[#22B05B] bg-[#F0FDF4] text-[#15803D] ring-2 ring-[#22B05B]';
+                            } elseif ($isSelected && ! $opt->is_correct) {
+                                $borderClass = 'border-[#EF4444] bg-[#FEF2F2] text-[#B91C1C] ring-2 ring-[#EF4444]';
+                            } else {
+                                $borderClass = 'border-[#E4E4E7] bg-zinc-50 opacity-50';
+                            }
+                        } elseif ($isSelected) {
+                            $borderClass = 'border-[#F9B92F] bg-[#FFF8E6] text-[#1C1C1E] ring-2 ring-[#F9B92F] shadow-xs';
+                        }
                     @endphp
 
-                    <button type="button"
-                        wire:click="selectOption({{ $index }})"
-                        @disabled($answered)
-                        @class([
-                            'flex w-full items-center gap-3 rounded-xl border-2 p-4 text-left transition-all',
-                            'border-[#F9B92F] bg-[#FFF8E6]' => $isSelected && !$answered,
-                            'border-[#E4E4E7] bg-white hover:border-[#F9B92F]' => !$isSelected && !$answered,
-                            'border-[#86EFAC] bg-[#F0FDF4]' => $answered && $isCorrect,
-                            'border-[#FCA5A5] bg-[#FEF2F2]' => $answered && $isSelected && !$isCorrect,
-                            'opacity-70' => $answered && !$isCorrect && !$isSelected,
-                            'cursor-pointer' => !$answered,
-                            'cursor-default' => $answered,
-                        ])>
-
-                        <span @class([
-                            'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-extrabold',
-                            'bg-[#F9B92F] text-[#1C1C1E]' => $isSelected && !$answered,
-                            'bg-[#F4F4F5] text-[#52525B]' => !$isSelected && !$answered,
-                            'bg-[#DCFCE7] text-[#15803D]' => $answered && $isCorrect,
-                            'bg-[#FEE2E2] text-[#B91C1C]' => $answered && $isSelected && !$isCorrect,
-                        ])>
-                            {{ chr(65 + $index) }}
-                        </span>
-
-                        <span class="flex-1 text-sm font-bold text-[#1C1C1E]">
-                            {{ $option }}
-                        </span>
-
-                        @if ($answered && $isCorrect)
-                            <span class="font-extrabold text-[#15803D]">✓</span>
-                        @elseif ($answered && $isSelected && !$isCorrect)
-                            <span class="font-extrabold text-[#B91C1C]">✕</span>
+                    <button
+                        type="button"
+                        wire:click="selectOption({{ $opt->id }})"
+                        class="p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between gap-3 {{ $borderClass }}"
+                        {{ $isAnswerChecked ? 'disabled' : '' }}
+                    >
+                        @if ($optMedia)
+                            {{-- Jika Opsi Jawaban Berupa Media (Tipe C atau A) --}}
+                            <div class="w-full aspect-video rounded-xl overflow-hidden bg-[#18181B] flex items-center justify-center p-1">
+                                @if ($optIsImg)
+                                    <img src="{{ $optMedia }}" class="h-full object-contain" />
+                                @else
+                                    <video src="{{ $optMedia }}" controls muted loop class="h-full object-contain"></video>
+                                @endif
+                            </div>
                         @endif
+
+                        <div class="flex items-center gap-3">
+                            <span class="w-7 h-7 rounded-xl flex items-center justify-center text-xs font-extrabold {{ $isSelected ? 'bg-[#F9B92F] text-[#1C1C1E]' : 'bg-[#F4F4F5] text-[#52525B]' }}">
+                                {{ chr(65 + $idx) }}
+                            </span>
+                            <span class="text-sm font-extrabold flex-1 leading-snug">
+                                {{ $optText }}
+                            </span>
+
+                            @if ($isAnswerChecked && $opt->is_correct)
+                                <span class="text-base text-[#22B05B]">✓</span>
+                            @elseif ($isAnswerChecked && $isSelected && ! $opt->is_correct)
+                                <span class="text-base text-[#EF4444]">✕</span>
+                            @endif
+                        </div>
                     </button>
                 @endforeach
             </div>
 
-            {{-- FEEDBACK --}}
-            @if ($answered)
-                @php
-                    $correct = $selectedOption === (int) ($question['correct_index'] ?? -1);
-                @endphp
+            {{-- Action Bottom Bar --}}
+            <div class="pt-4 border-t border-[#E4E4E7] flex items-center justify-between">
+                @if ($isAnswerChecked)
+                    <div class="flex items-center gap-2">
+                        @if ($isCurrentCorrect)
+                            <span class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-extrabold text-[#15803D]">
+                                <span>🎉</span> <span>Jawaban Benar!</span>
+                            </span>
+                        @else
+                            <span class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-extrabold text-[#B91C1C]">
+                                <span>✕</span> <span>Kurang tepat, perhatikan kunci jawaban di atas.</span>
+                            </span>
+                        @endif
+                    </div>
 
-                <div @class([
-                    'rounded-xl border-2 p-4',
-                    'border-[#86EFAC] bg-[#F0FDF4]' => $correct,
-                    'border-[#FCA5A5] bg-[#FEF2F2]' => !$correct,
-                ])>
-                    <p @class([
-                        'text-sm font-extrabold',
-                        'text-[#15803D]' => $correct,
-                        'text-[#B91C1C]' => !$correct,
-                    ])>
-                        {{ $correct ? 'Jawaban kamu benar!' : 'Belum tepat, yuk pelajari lagi!' }}
-                    </p>
-
-                    @if (!$correct)
-                        <p class="mt-1 text-sm text-[#52525B]">
-                            Jawaban yang benar:
-                            <strong>{{ $question['options'][$question['correct_index']] ?? '-' }}</strong>
-                        </p>
-                    @endif
-                </div>
-            @endif
-
-            {{-- ACTION --}}
-            <div class="flex justify-end border-t border-[#E4E4E7] pt-5">
-                @if (!$answered)
-                    <button type="button"
-                        wire:click="checkAnswer"
-                        @disabled($selectedOption === null)
-                        class="w-full rounded-xl border-2 border-b-4 border-[#C98A06] bg-[#F9B92F] px-6 py-3 text-sm font-extrabold text-[#1C1C1E] transition hover:bg-[#FAD078] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
-                        Periksa Jawaban
+                    <button
+                        type="button"
+                        wire:click="nextQuestion"
+                        class="px-6 py-2.5 rounded-xl bg-[#F9B92F] hover:bg-[#fabf45] border-2 border-b-4 border-[#C98A06] active:translate-y-0.5 active:border-b-2 text-xs sm:text-sm font-extrabold text-[#1C1C1E] transition-all cursor-pointer shadow-xs ml-auto"
+                    >
+                        {{ $currentIndex + 1 < $totalQuestions ? 'Soal Berikutnya →' : 'Lihat Hasil Kuis →' }}
                     </button>
                 @else
-                    <button type="button"
-                        wire:click="nextQuestion"
-                        class="w-full rounded-xl border-2 border-b-4 border-[#C98A06] bg-[#F9B92F] px-6 py-3 text-sm font-extrabold text-[#1C1C1E] transition hover:bg-[#FAD078] sm:w-auto">
-                        {{ $questionIndex === $totalQuestions - 1 ? 'Lihat Hasil' : 'Soal Berikutnya →' }}
+                    <div class="text-xs text-[#71717A] font-medium">
+                        Pilih satu opsi jawaban untuk melanjutkan.
+                    </div>
+
+                    <button
+                        type="button"
+                        wire:click="checkAnswer"
+                        @disabled(! $selectedOptionId)
+                        class="px-6 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer shadow-xs ml-auto {{ $selectedOptionId ? 'bg-[#22B05B] hover:bg-[#1ea052] border-2 border-b-4 border-[#15803D] active:translate-y-0.5 active:border-b-2 text-white' : 'bg-zinc-100 text-zinc-400 border-2 border-zinc-200 cursor-not-allowed' }}"
+                    >
+                        Periksa Jawaban
                     </button>
                 @endif
             </div>
-
-        </section>
-
-    @else
-
-        {{-- FINAL RESULT --}}
-        <section class="rounded-2xl border-2 border-b-4 border-[#E4E4E7] bg-white px-6 py-10 text-center sm:px-10">
-
-            <div class="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full bg-[#FFF3D5] text-5xl">
-                {{ $this->score >= 70 ? '🏆' : '💪' }}
-            </div>
-
-            <p class="text-xs font-extrabold uppercase tracking-widest text-[#C98A06]">
-                Kuis Selesai
-            </p>
-
-            <h1 class="mt-2 text-2xl font-extrabold text-[#1C1C1E] sm:text-3xl">
-                {{ $this->score >= 70 ? 'Kerja Bagus!' : 'Tetap Semangat!' }}
-            </h1>
-
-            <p class="mt-2 text-sm text-[#828282]">
-                Kamu sudah menyelesaikan {{ $package['title'] }}.
-            </p>
-
-            <div class="my-8 grid grid-cols-2 gap-3">
-                <div class="rounded-2xl bg-[#FFF8E6] p-5">
-                    <p class="text-3xl font-extrabold text-[#C98A06]">
-                        {{ $this->score }}%
-                    </p>
-                    <p class="mt-1 text-xs font-bold text-[#828282]">Skor Akhir</p>
-                </div>
-
-                <div class="rounded-2xl bg-[#F0FDF4] p-5">
-                    <p class="text-3xl font-extrabold text-[#15803D]">
-                        {{ $correctAnswers }}/{{ count($package['questions']) }}
-                    </p>
-                    <p class="mt-1 text-xs font-bold text-[#828282]">Jawaban Benar</p>
-                </div>
-            </div>
-
-            <p class="mb-6 text-sm text-[#828282]">
-                {{ $this->score >= 70
-                    ? 'Hebat! Kamu sudah memahami materi dengan baik.'
-                    : 'Jangan menyerah. Coba pelajari kembali materi dan ulangi kuisnya.' }}
-            </p>
-
-            <div class="flex flex-col justify-center gap-3 sm:flex-row">
-                <button type="button"
-                    wire:click="restartQuiz"
-                    class="rounded-xl border-2 border-b-4 border-[#C98A06] bg-[#F9B92F] px-6 py-3 text-sm font-extrabold text-[#1C1C1E] hover:bg-[#FAD078]">
-                    Ulangi Kuis
-                </button>
-
-                <a href="{{ route('latihan.index') }}" wire:navigate
-                    class="rounded-xl border-2 border-[#E4E4E7] bg-white px-6 py-3 text-sm font-extrabold text-[#52525B] hover:bg-[#FAFAFA]">
-                    Kembali ke Paket
-                </a>
-            </div>
-
-        </section>
-
+        </div>
     @endif
-
 </div>
