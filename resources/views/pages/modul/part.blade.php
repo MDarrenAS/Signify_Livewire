@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\UserModuleProgress;
 use App\Support\MockCurriculum;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -110,8 +111,27 @@ new #[Layout('layouts::lessons')] class extends Component
 
     private function markSessionCompleted(?int $quizScore = null): void
     {
+        $partKey = $this->modulSlug . ':' . $this->bagianSlug;
+
+        // 1. Simpan ke database jika user sudah login
+        if (auth()->check()) {
+            UserModuleProgress::updateOrCreate(
+                [
+                    'user_id'    => auth()->id(),
+                    'modul_slug' => $this->modulSlug,
+                    'part_slug'  => $this->bagianSlug,
+                ],
+                [
+                    'part_type'    => $this->partData['type'] ?? 'lesson',
+                    'score'        => $quizScore,
+                    'is_completed' => true,
+                    'completed_at' => now(),
+                ]
+            );
+        }
+
+        // 2. Simpan juga ke session untuk reaktivitas UI instan
         $completedParts = (array) session('completed_parts', []);
-        $partKey        = $this->modulSlug . ':' . $this->bagianSlug;
 
         if (! in_array($partKey, $completedParts, true)) {
             $completedParts[] = $partKey;
