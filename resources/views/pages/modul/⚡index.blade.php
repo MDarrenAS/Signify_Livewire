@@ -1,78 +1,20 @@
 <?php
 
-use App\Support\MockCurriculum;
+use App\Services\CurriculumService;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Modul Belajar')] class extends Component
 {
-    public function with(): array
+    public function with(CurriculumService $service): array
     {
         $user = auth()->user();
 
         return [
             'streak' => $user->streak ?? 0,
             'xp'     => ($user->xp ?? 420) + (int) session('session_xp', 0),
-            // TODO (Backend): Ganti $this->getUnitsWithSessionProgress() dengan query Eloquent / ModulService
-            'units'  => $this->getUnitsWithSessionProgress(),
+            'units'  => $service->getUnitsForUser($user),
         ];
-    }
-
-    private function getUnitsWithSessionProgress(): array
-    {
-        $completedKeys = (array) session('completed_parts', []);
-        $quizScores    = (array) session('quiz_scores', []);
-        $prevModulDone = true;
-
-        return collect(MockCurriculum::getUnits())->map(function (array $unit) use ($completedKeys, $quizScores, &$prevModulDone) {
-            $modules = collect($unit['modules'] ?? [])->map(function (array $modul) use ($completedKeys, $quizScores, &$prevModulDone) {
-                $rawParts = collect($modul['parts'] ?? []);
-
-                $parts = $rawParts->map(function (array $part) use ($modul, $completedKeys, $quizScores) {
-                    $key    = $modul['slug'] . ':' . $part['slug'];
-                    $isDone = in_array($key, $completedKeys, true) || ($part['status'] ?? '') === 'completed';
-
-                    if ($isDone) {
-                        $part['status'] = 'completed';
-
-                        if (($part['type'] ?? 'lesson') === 'quiz' && isset($quizScores[$key])) {
-                            $score = (int) $quizScores[$key];
-                            $part['badge_text'] = $score >= 100 ? 'Skor 100 • Sempurna' : "Skor {$score}";
-                        }
-                    }
-
-                    return $part;
-                });
-
-                $wasLocked    = ($modul['status'] ?? '') === 'locked';
-                $isLocked     = $wasLocked && ! $prevModulDone;
-                $totalParts   = $parts->count();
-                $doneCount    = $parts->where('status', 'completed')->count();
-                $isModulDone  = $totalParts > 0 && $doneCount === $totalParts;
-                $isInProgress = ! $isLocked && $doneCount > 0 && ! $isModulDone;
-
-                $prevModulDone = ! $isLocked && $isModulDone;
-
-                return array_merge($modul, [
-                    'status'      => $isLocked ? 'locked' : ($isModulDone ? 'completed' : null),
-                    'tag'         => (! $isLocked && ! $isModulDone) ? ($modul['tag'] ?? 'SEDANG AKTIF') : ($modul['tag'] ?? null),
-                    'description' => $isLocked
-                        ? ($modul['description'] ?? 'Terkunci • Selesaikan modul sebelumnya terlebih dahulu')
-                        : (str_starts_with($modul['description'] ?? '', 'Terkunci')
-                            ? 'Kuasai materi ' . $modul['title'] . ' dalam isyarat BISINDO.'
-                            : ($modul['description'] ?? '')),
-                    'xp_reward'   => $modul['xp_reward'] ?? $parts->sum('xp_reward'),
-                    'total_parts' => $modul['total_parts'] ?? $totalParts,
-                    'is_expanded' => $isInProgress || ($wasLocked && ! $isLocked) || (! $isLocked && ! $isModulDone && ($modul['is_expanded'] ?? false)),
-                    'parts'       => $isLocked ? [] : $parts->all(),
-                ]);
-            });
-
-            return array_merge($unit, [
-                'is_locked' => $modules->isNotEmpty() && $modules->every(fn (array $m) => ($m['status'] ?? '') === 'locked'),
-                'modules'   => $modules->all(),
-            ]);
-        })->all();
     }
 };
 ?>

@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\Module;
+use App\Models\Unit;
+use App\Services\CurriculumService;
 use App\Support\MockCurriculum;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
@@ -40,13 +43,15 @@ new #[Layout('layouts::admin')] #[Title('Kelola Modul & Unit — Admin Signify')
     public int $formXpReward = 50;
     public bool $formIsActive = true;
 
-    public function mount(): void
+    public function mount(CurriculumService $service): void
     {
-        $this->units = session('admin_custom_units', MockCurriculum::getUnits());
+        $this->loadUnits($service);
     }
 
-    private function persistUnits(): void
+    public function loadUnits(?CurriculumService $service = null): void
     {
+        $service ??= app(CurriculumService::class);
+        $this->units = $service->getUnitsForAdmin();
         session(['admin_custom_units' => $this->units]);
     }
 
@@ -128,24 +133,32 @@ new #[Layout('layouts::admin')] #[Title('Kelola Modul & Unit — Admin Signify')
             'unitBadge.required' => 'Label badge unit wajib diisi.',
         ]);
 
-        if ($this->editUnitIdx !== null && isset($this->units[$this->editUnitIdx])) {
-            $this->units[$this->editUnitIdx]['title']       = $this->unitTitle;
-            $this->units[$this->editUnitIdx]['badge']       = $this->unitBadge;
-            $this->units[$this->editUnitIdx]['description'] = $this->unitDescription;
+        $levelVal = $this->unitLevel === 'CUSTOM' ? strtoupper(trim($this->customLevel)) : $this->unitLevel;
+
+        if ($this->editUnitIdx !== null && isset($this->units[$this->editUnitIdx]['id'])) {
+            $unitId = (int) $this->units[$this->editUnitIdx]['id'];
+            Unit::where('id', $unitId)->update([
+                'title'       => $this->unitTitle,
+                'badge'       => $this->unitBadge,
+                'level'       => $levelVal,
+                'description' => $this->unitDescription,
+            ]);
 
             $this->dispatch('notify', [
                 'type'    => 'success',
                 'message' => 'Unit "' . $this->unitTitle . '" berhasil diperbarui!',
             ]);
         } else {
-            $this->units[] = [
-                'id'          => count($this->units) + 1,
+            $maxSort = (int) (Unit::max('sort_order') ?? 0);
+            Unit::create([
+                'unit_number' => $this->unitNumber,
+                'level'       => $levelVal,
                 'badge'       => $this->unitBadge,
                 'title'       => $this->unitTitle,
                 'description' => $this->unitDescription,
-                'is_locked'   => false,
-                'modules'     => [],
-            ];
+                'sort_order'  => $maxSort + 1,
+                'is_active'   => true,
+            ]);
 
             $this->dispatch('notify', [
                 'type'    => 'success',
@@ -153,16 +166,17 @@ new #[Layout('layouts::admin')] #[Title('Kelola Modul & Unit — Admin Signify')
             ]);
         }
 
-        $this->persistUnits();
+        $this->loadUnits();
         $this->showUnitModal = false;
     }
 
     public function deleteUnit(int $unitIdx): void
     {
         $unitName = $this->units[$unitIdx]['title'] ?? 'Unit';
-        unset($this->units[$unitIdx]);
-        $this->units = array_values($this->units);
-        $this->persistUnits();
+        if (isset($this->units[$unitIdx]['id'])) {
+            Unit::where('id', (int) $this->units[$unitIdx]['id'])->delete();
+        }
+        $this->loadUnits();
 
         $this->dispatch('notify', [
             'type'    => 'success',
@@ -231,43 +245,50 @@ new #[Layout('layouts::admin')] #[Title('Kelola Modul & Unit — Admin Signify')
         }
 
         if ($this->editModulUnitIdx !== null && $this->editModulIdx !== null) {
-            $item = &$this->units[$this->editModulUnitIdx]['modules'][$this->editModulIdx];
-            $item['title']       = $this->formTitle;
-            $item['subtitle']    = $this->formSubtitle;
-            $item['description'] = $this->formDescription;
-            $item['icon']        = $this->formIcon;
-            $item['icon_url']    = $iconUrl;
-            $item['xp_reward']   = $this->formXpReward;
-            $item['status']      = $this->formIsActive ? 'active' : 'locked';
+            $modulData = $this->units[$this->editModulUnitIdx]['modules'][$this->editModulIdx] ?? null;
+            if ($modulData && isset($modulData['id'])) {
+                Module::where('id', (int) $modulData['id'])->update([
+                    'title'       => $this->formTitle,
+                    'subtitle'    => $this->formSubtitle,
+                    'description' => $this->formDescription,
+                    'icon_emoji'  => $this->formIcon,
+                    'icon_url'    => $iconUrl,
+                    'xp_reward'   => $this->formXpReward,
+                    'is_active'   => $this->formIsActive,
+                ]);
+            }
 
             $this->dispatch('notify', [
                 'type'    => 'success',
                 'message' => 'Modul "' . $this->formTitle . '" berhasil diperbarui!',
             ]);
         } else {
-            if (! isset($this->units[$this->formUnitIdx])) {
-                $this->formUnitIdx = 0;
-            }
+            $targetUnitId = $this->units[$this->formUnitIdx]['id'] ?? Unit::first()?->id;
 
-            $newSlug = Str::slug($this->formTitle);
-            if (empty($newSlug)) {
-                $newSlug = 'modul-' . rand(100, 999);
-            } else {
-                $newSlug .= '-' . rand(10, 99);
-            }
+            if ($targetUnitId) {
+                $baseSlug = Str::slug($this->formTitle) ?: 'modul-' . rand(100, 999);
+                $slug = $baseSlug;
+                $counter = 1;
+                while (Module::where('slug', $slug)->exists()) {
+                    $slug = "{$baseSlug}-{$counter}";
+                    $counter++;
+                }
 
-            $this->units[$this->formUnitIdx]['modules'][] = [
-                'slug'           => $newSlug,
-                'title'          => $this->formTitle,
-                'subtitle'       => $this->formSubtitle,
-                'description'    => $this->formDescription,
-                'icon'           => $this->formIcon,
-                'icon_url'       => $iconUrl,
-                'xp_reward'      => $this->formXpReward,
-                'status'         => $this->formIsActive ? 'active' : 'locked',
-                'visual_content' => $this->formIcon,
-                'parts'          => [],
-            ];
+                $maxSort = (int) (Module::where('unit_id', $targetUnitId)->max('sort_order') ?? 0);
+
+                Module::create([
+                    'unit_id'     => $targetUnitId,
+                    'title'       => $this->formTitle,
+                    'slug'        => $slug,
+                    'subtitle'    => $this->formSubtitle,
+                    'description' => $this->formDescription,
+                    'icon_emoji'  => $this->formIcon,
+                    'icon_url'    => $iconUrl,
+                    'xp_reward'   => $this->formXpReward,
+                    'is_active'   => $this->formIsActive,
+                    'sort_order'  => $maxSort + 1,
+                ]);
+            }
 
             $this->dispatch('notify', [
                 'type'    => 'success',
@@ -275,16 +296,17 @@ new #[Layout('layouts::admin')] #[Title('Kelola Modul & Unit — Admin Signify')
             ]);
         }
 
-        $this->persistUnits();
+        $this->loadUnits();
         $this->showModulModal = false;
     }
 
     public function deleteModul(int $unitIdx, int $modulIdx): void
     {
         $title = $this->units[$unitIdx]['modules'][$modulIdx]['title'] ?? 'Modul';
-        unset($this->units[$unitIdx]['modules'][$modulIdx]);
-        $this->units[$unitIdx]['modules'] = array_values($this->units[$unitIdx]['modules']);
-        $this->persistUnits();
+        if (isset($this->units[$unitIdx]['modules'][$modulIdx]['id'])) {
+            Module::where('id', (int) $this->units[$unitIdx]['modules'][$modulIdx]['id'])->delete();
+        }
+        $this->loadUnits();
 
         $this->dispatch('notify', [
             'type'    => 'success',

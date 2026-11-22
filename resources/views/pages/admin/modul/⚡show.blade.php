@@ -1,5 +1,10 @@
 <?php
 
+use App\Models\LessonItem;
+use App\Models\Module;
+use App\Models\ModuleLesson;
+use App\Models\ModuleLessonQuestion;
+use App\Services\CurriculumService;
 use App\Support\MockCurriculum;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
@@ -22,11 +27,13 @@ new #[Layout('layouts::admin')] #[Title('Isi Modul — Admin Signify')] class ex
     public function mount(string $modul): void
     {
         $this->modulSlug = $modul;
-        $allUnits = session('admin_custom_units', MockCurriculum::getUnits());
+        $this->loadModuleData();
+    }
 
-        $found = collect($allUnits)
-            ->flatMap(fn ($u) => $u['modules'] ?? [])
-            ->firstWhere('slug', $modul);
+    public function loadModuleData(): void
+    {
+        $service = app(CurriculumService::class);
+        $found = $service->getModuleWithParts($this->modulSlug);
 
         abort_if(! $found, 404);
         $this->modulData = $found;
@@ -41,24 +48,58 @@ new #[Layout('layouts::admin')] #[Title('Isi Modul — Admin Signify')] class ex
     public function syncPart(int $index, array $part): void
     {
         $this->modulData['parts'][$index] = $part;
-        $this->saveToSession();
-    }
 
-    private function saveToSession(): void
-    {
-        // TODO (Backend): Ganti update array session ini dengan query update Eloquent
-        $allUnits = session('admin_custom_units', MockCurriculum::getUnits());
+        $lessonId = $part['id'] ?? null;
+        if (! $lessonId) {
+            $lesson = ModuleLesson::where('module_id', $this->modulData['id'] ?? 0)
+                ->where('slug', $part['slug'] ?? '')
+                ->first();
+            $lessonId = $lesson?->id;
+        }
 
-        foreach ($allUnits as &$unit) {
-            foreach ($unit['modules'] as &$m) {
-                if (($m['slug'] ?? '') === $this->modulSlug) {
-                    $m = $this->modulData;
-                    break 2;
+        if ($lessonId) {
+            $lessonModel = ModuleLesson::find($lessonId);
+            if ($lessonModel) {
+                $lessonModel->update([
+                    'title'         => $part['title'] ?? $lessonModel->title,
+                    'xp_reward'     => $part['xp_reward'] ?? $lessonModel->xp_reward,
+                    'passing_score' => $part['passing_score'] ?? $lessonModel->passing_score,
+                ]);
+
+                if (($part['type'] ?? '') === 'lesson' && isset($part['items'])) {
+                    LessonItem::where('module_lesson_id', $lessonId)->delete();
+                    foreach ($part['items'] as $i => $item) {
+                        LessonItem::create([
+                            'module_lesson_id' => $lessonId,
+                            'library_item_id'  => $item['library_item_id'] ?? null,
+                            'symbol'           => $item['symbol'] ?? null,
+                            'title'            => $item['title'] ?? 'Item ' . ($i + 1),
+                            'hand_type'        => $item['hand_type'] ?? '1 Tangan',
+                            'video_url'        => $item['video_url'] ?? null,
+                            'instruction'      => $item['instruction'] ?? $item['description'] ?? null,
+                            'tip'              => $item['una_tip'] ?? $item['tip'] ?? null,
+                            'sort_order'       => $i + 1,
+                        ]);
+                    }
+                } elseif (($part['type'] ?? '') === 'quiz' && isset($part['questions'])) {
+                    ModuleLessonQuestion::where('module_lesson_id', $lessonId)->delete();
+                    foreach ($part['questions'] as $i => $q) {
+                        ModuleLessonQuestion::create([
+                            'module_lesson_id' => $lessonId,
+                            'question'         => $q['question'] ?? 'Pertanyaan',
+                            'video_url'        => $q['video_url'] ?? $q['media_url'] ?? null,
+                            'symbol_hint'      => $q['symbol_hint'] ?? null,
+                            'options'          => array_values($q['options'] ?? []),
+                            'correct_index'    => (int) ($q['correct_index'] ?? 0),
+                            'explanation'      => $q['explanation'] ?? null,
+                            'sort_order'       => $i + 1,
+                        ]);
+                    }
                 }
             }
         }
 
-        session(['admin_custom_units' => $allUnits]);
+        $this->loadModuleData();
     }
 
     public function savePart(): void
@@ -70,44 +111,42 @@ new #[Layout('layouts::admin')] #[Title('Isi Modul — Admin Signify')] class ex
             'partTitle.required' => 'Judul bagian materi/kuis wajib diisi.',
         ]);
 
-        $order = count($this->modulData['parts'] ?? []) + 1;
+        $module = Module::where('slug', $this->modulSlug)->firstOrFail();
+        $order = (int) ($module->lessons()->max('sort_order') ?? 0) + 1;
+        $baseSlug = Str::slug($this->partTitle) ?: 'bagian';
+        $slug = "{$baseSlug}-{$order}";
 
-        $newPart = [
-            'slug'          => Str::slug($this->partTitle) . '-' . $order,
-            'order'         => $order,
-            'type'          => $this->partType,
+        $newLesson = ModuleLesson::create([
+            'module_id'     => $module->id,
             'title'         => $this->partTitle,
+            'slug'          => $slug,
+            'type'          => $this->partType,
             'xp_reward'     => $this->partXp,
             'passing_score' => $this->partPassingScore,
-            'items'         => [],
-            'questions'     => [],
-        ];
+            'sort_order'    => $order,
+        ]);
 
-        $this->modulData['parts'][] = $newPart;
-        $this->saveToSession();
-
-        $this->activePartIndex = count($this->modulData['parts']) - 1;
+        $this->loadModuleData();
+        $this->activePartIndex = max(0, count($this->modulData['parts'] ?? []) - 1);
         $this->reset(['partTitle', 'showPartModal']);
 
         $this->dispatch('notify', [
             'type'    => 'success',
-            'message' => 'Bagian baru "' . $newPart['title'] . '" berhasil ditambahkan!',
+            'message' => 'Bagian baru "' . $newLesson->title . '" berhasil ditambahkan!',
         ]);
     }
 
     public function deletePart(int $index): void
     {
-        $title = $this->modulData['parts'][$index]['title'] ?? 'Bagian';
-        unset($this->modulData['parts'][$index]);
-        $this->modulData['parts'] = array_values($this->modulData['parts']);
+        $part = $this->modulData['parts'][$index] ?? null;
+        $title = $part['title'] ?? 'Bagian';
 
-        // Rapikan ulang nomor urut (order)
-        foreach ($this->modulData['parts'] as $i => &$p) {
-            $p['order'] = $i + 1;
+        if ($part && isset($part['id'])) {
+            ModuleLesson::where('id', (int) $part['id'])->delete();
         }
 
-        $this->saveToSession();
-        $this->activePartIndex = max(0, min($this->activePartIndex, count($this->modulData['parts']) - 1));
+        $this->loadModuleData();
+        $this->activePartIndex = max(0, min($this->activePartIndex, count($this->modulData['parts'] ?? []) - 1));
 
         $this->dispatch('notify', [
             'type'    => 'success',

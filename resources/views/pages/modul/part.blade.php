@@ -1,6 +1,8 @@
 <?php
 
-use App\Support\MockCurriculum;
+use App\Models\Module;
+use App\Models\ModuleLesson;
+use App\Models\UserLessonProgress;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -29,50 +31,92 @@ new #[Layout('layouts::lessons')] class extends Component
         $this->modulSlug  = $modul;
         $this->bagianSlug = $bagian;
 
-        $allModules = collect(MockCurriculum::getUnits())
-            ->flatMap(fn (array $unit) => $unit['modules'] ?? [])
-            ->values();
+        $module = Module::where('slug', $modul)
+            ->with([
+                'lessons' => fn ($q) => $q->orderBy('sort_order')->orderBy('id'),
+                'lessons.items' => fn ($q) => $q->orderBy('sort_order')->orderBy('id'),
+                'lessons.questions' => fn ($q) => $q->orderBy('sort_order')->orderBy('id'),
+            ])
+            ->first();
 
-        $modulIndex = $allModules->search(fn (array $m) => ($m['slug'] ?? '') === $modul);
-        abort_if($modulIndex === false, 404);
+        abort_if(! $module, 404);
 
-        $foundModul = $allModules->get($modulIndex);
-        $parts      = collect($foundModul['parts'] ?? [])->values();
-        $partIndex  = $parts->search(fn (array $p) => ($p['slug'] ?? '') === $bagian);
+        $lessons = $module->lessons;
+        $lessonIndex = $lessons->search(fn ($l) => $l->slug === $bagian);
+        abort_if($lessonIndex === false, 404);
 
-        abort_if($partIndex === false, 404);
+        $lesson = $lessons->get($lessonIndex);
 
-        $foundPart = $parts->get($partIndex);
+        $allModules = Module::where('is_active', true)->orderBy('sort_order')->orderBy('id')->get();
+        $currentModIndex = $allModules->search(fn ($m) => $m->id === $module->id);
+        $nextModulModel = $currentModIndex !== false ? $allModules->get($currentModIndex + 1) : null;
 
-        $this->modulData = $foundModul;
-        $this->partData  = $foundPart;
-        $this->items     = array_values($foundPart['items'] ?? []);
+        $this->modulData = [
+            'id'    => $module->id,
+            'slug'  => $module->slug,
+            'title' => $module->title,
+        ];
 
-        $this->questions = collect($foundPart['questions'] ?? [])
-            ->map(function (array $q): array {
-                $options      = array_values($q['options'] ?? []);
-                $correctIndex = $q['correct_index'] ?? $q['correct'] ?? $q['answer'] ?? 0;
+        $this->partData = [
+            'id'            => $lesson->id,
+            'slug'          => $lesson->slug,
+            'order'         => $lesson->sort_order,
+            'type'          => $lesson->type,
+            'title'         => $lesson->title,
+            'subtitle'      => $lesson->subtitle,
+            'category'      => $lesson->category,
+            'badge_text'    => $lesson->badge_text,
+            'xp_reward'     => $lesson->xp_reward,
+            'passing_score' => $lesson->passing_score,
+        ];
 
-                if (is_string($correctIndex) && ! is_numeric($correctIndex)) {
-                    $foundIdx = collect($options)->search(function ($opt) use ($correctIndex) {
-                        $label = is_array($opt) ? ($opt['label'] ?? $opt['text'] ?? '') : (string) $opt;
-                        return strcasecmp(trim($label), trim($correctIndex)) === 0;
-                    });
-                    $correctIndex = $foundIdx !== false ? $foundIdx : 0;
-                }
+        $this->items = $lesson->items->map(fn ($it) => [
+            'id'          => $it->id,
+            'order'       => $it->sort_order,
+            'symbol'      => $it->symbol,
+            'title'       => $it->title,
+            'hand_type'   => $it->hand_type,
+            'video_url'   => $it->video_url,
+            'instruction' => $it->instruction,
+            'description' => $it->instruction,
+            'una_tip'     => $it->tip,
+            'tip'         => $it->tip,
+        ])->all();
 
-                $q['options']       = $options;
-                $q['correct_index'] = (int) $correctIndex;
+        $this->questions = $lesson->questions->map(function ($q) {
+            $options = array_values($q->options ?? []);
+            $correctIndex = $q->correct_index;
 
-                return $q;
-            })
-            ->values()
-            ->all();
+            return [
+                'id'            => $q->id,
+                'order'         => $q->sort_order,
+                'question'      => $q->question,
+                'media_url'     => $q->video_url,
+                'video_url'     => $q->video_url,
+                'symbol_hint'   => $q->symbol_hint,
+                'options'       => $options,
+                'correct_index' => (int) $correctIndex,
+                'explanation'   => $q->explanation,
+            ];
+        })->all();
 
-        $this->partOrder  = $foundPart['order'] ?? ($partIndex + 1);
-        $this->totalParts = $parts->count();
-        $this->nextPart   = $parts->get($partIndex + 1);
-        $this->nextModul  = $allModules->get($modulIndex + 1);
+        $this->partOrder  = $lesson->sort_order ?? ($lessonIndex + 1);
+        $this->totalParts = $lessons->count();
+        $nextLesson       = $lessons->get($lessonIndex + 1);
+        $this->nextPart   = $nextLesson ? [
+            'slug'  => $nextLesson->slug,
+            'order' => $nextLesson->sort_order,
+        ] : null;
+
+        if ($nextModulModel) {
+            $nextFirstLesson = $nextModulModel->lessons()->first();
+            $this->nextModul = [
+                'slug'  => $nextModulModel->slug,
+                'parts' => $nextFirstLesson ? [['slug' => $nextFirstLesson->slug]] : [],
+            ];
+        } else {
+            $this->nextModul = null;
+        }
     }
 
     public function complete(): void
@@ -128,6 +172,27 @@ new #[Layout('layouts::lessons')] class extends Component
             $quizScores[$partKey] = max((int) ($quizScores[$partKey] ?? 0), $quizScore);
 
             session(['quiz_scores' => $quizScores]);
+        }
+
+        if ($user = auth()->user()) {
+            $lessonId = $this->partData['id'] ?? null;
+            if (! $lessonId) {
+                $lessonId = ModuleLesson::where('slug', $this->bagianSlug)->value('id');
+            }
+
+            if ($lessonId) {
+                UserLessonProgress::updateOrCreate(
+                    [
+                        'user_id'          => $user->id,
+                        'module_lesson_id' => $lessonId,
+                    ],
+                    [
+                        'status'       => 'completed',
+                        'score'        => $quizScore,
+                        'completed_at' => now(),
+                    ]
+                );
+            }
         }
     }
 };

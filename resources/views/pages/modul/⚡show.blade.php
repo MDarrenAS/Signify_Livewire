@@ -1,23 +1,21 @@
 <?php
 
-use App\Support\MockCurriculum;
+use App\Models\Module;
 use Livewire\Component;
 
 new class extends Component
 {
     public function mount(string $modul): void
     {
-        $foundModul = collect(MockCurriculum::getUnits())
-            ->flatMap(fn (array $unit) => $unit['modules'] ?? [])
-            ->firstWhere('slug', $modul);
+        $foundModul = Module::where('slug', $modul)->with('lessons')->first();
+        abort_if(! $foundModul, 404);
 
-        $firstPart = $foundModul['parts'][0] ?? null;
-
-        abort_if(! $foundModul || ! $firstPart, 404);
+        $firstLesson = $foundModul->lessons->first();
+        abort_if(! $firstLesson, 404);
 
         $this->redirectRoute('modul.part', [
-            'modul'  => $foundModul['slug'],
-            'bagian' => $firstPart['slug'],
+            'modul'  => $foundModul->slug,
+            'bagian' => $firstLesson->slug,
         ], navigate: true);
     }
 };

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\LibraryItem;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -11,12 +12,36 @@ new class extends Component
     public int $partIndex = 0;
 
     public bool $showModal = false;
+    public ?int $selectedLibraryItemId = null;
     public string $title = '';
     public string $videoUrl = '';
     public $mediaFile = null;
     public string $description = '';
     public string $tip = '';
     public string $handType = '2 Tangan';
+
+    public function updatedSelectedLibraryItemId(?int $libId): void
+    {
+        if (! $libId) {
+            return;
+        }
+
+        $libItem = LibraryItem::with('media')->find($libId);
+        if (! $libItem) {
+            return;
+        }
+
+        $this->title = $libItem->title;
+        $this->description = $libItem->movement_description ?: ($libItem->description ?: 'Perhatikan gerakan tangan dengan seksama.');
+
+        if ($libItem->media->isNotEmpty()) {
+            try {
+                $this->videoUrl = $libItem->media->first()->temporaryUrl();
+            } catch (\Throwable) {
+                $this->videoUrl = $libItem->media->first()->storage_path ?? '';
+            }
+        }
+    }
 
     public function saveItem(): void
     {
@@ -45,15 +70,16 @@ new class extends Component
         $order = count($this->part['items'] ?? []) + 1;
 
         $this->part['items'][] = [
-            'order'       => $order,
-            'symbol'      => strtoupper(substr($this->title, 0, 3)),
-            'title'       => $this->title,
-            'hand_type'   => $this->handType,
-            'video_url'   => $finalMediaUrl,
-            'instruction' => $this->description,
-            'description' => $this->description,
-            'una_tip'     => $this->tip ?: 'Perhatikan posisi jari dan arah telapak tangan.',
-            'tip'         => $this->tip ?: 'Perhatikan posisi jari dan arah telapak tangan.',
+            'library_item_id' => $this->selectedLibraryItemId,
+            'order'           => $order,
+            'symbol'          => strtoupper(substr($this->title, 0, 3)),
+            'title'           => $this->title,
+            'hand_type'       => $this->handType,
+            'video_url'       => $finalMediaUrl,
+            'instruction'     => $this->description,
+            'description'     => $this->description,
+            'una_tip'         => $this->tip ?: 'Perhatikan posisi jari dan arah telapak tangan.',
+            'tip'             => $this->tip ?: 'Perhatikan posisi jari dan arah telapak tangan.',
         ];
 
         $this->dispatch('part-updated', index: $this->partIndex, part: $this->part);
@@ -63,7 +89,7 @@ new class extends Component
             'message' => 'Isyarat "' . $this->title . '" berhasil ditambahkan!',
         ]);
 
-        $this->reset(['title', 'videoUrl', 'mediaFile', 'description', 'tip', 'showModal']);
+        $this->reset(['selectedLibraryItemId', 'title', 'videoUrl', 'mediaFile', 'description', 'tip', 'showModal']);
     }
 
     public function removeItem(int $itemIdx): void
@@ -185,6 +211,30 @@ new class extends Component
     {{-- Modal Tambah Isyarat --}}
     <x-admin.modal :show="$showModal" title="Tambah Item Isyarat Materi" close-action="$set('showModal', false)" max-width="max-w-lg">
         <form wire:submit="saveItem" class="space-y-4">
+            {{-- Pilihan dari Kamus BISINDO --}}
+            @php
+                $kamusItems = \App\Models\LibraryItem::orderBy('title')->get(['id', 'title', 'item_type']);
+            @endphp
+            @if ($kamusItems->isNotEmpty())
+                <div class="p-3 bg-[#FFFDF7] border-2 border-[#F9B92F] rounded-xl space-y-1">
+                    <label class="block text-xs font-extrabold text-[#C98A06]">
+                        📚 Hubungkan ke Kamus BISINDO (Gunakan Media yang Sudah Ada)
+                    </label>
+                    <select
+                        wire:model.live="selectedLibraryItemId"
+                        class="w-full px-3 py-2 rounded-lg border border-[#F9B92F] text-xs font-bold bg-white text-[#1C1C1E] focus:outline-none"
+                    >
+                        <option value="">-- Pilih entri kamus agar media otomatis terpasang --</option>
+                        @foreach ($kamusItems as $kItem)
+                            <option value="{{ $kItem->id }}">{{ $kItem->title }} ({{ ucfirst($kItem->item_type) }})</option>
+                        @endforeach
+                    </select>
+                    <p class="text-[10px] text-[#71717A]">
+                        Pilih entri kamus agar media video/gambar tidak perlu diunggah ulang (menghemat kuota bucket Supabase).
+                    </p>
+                </div>
+            @endif
+
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-extrabold text-[#1C1C1E] mb-1">Huruf / Kata Isyarat</label>
