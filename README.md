@@ -7,22 +7,104 @@
 
 # Signify
 
-Signify adalah website yang dirancang untuk membantu pembelajaran Sistem Isyarat Bahasa Indonesia (SIBINDO). Repository ini dibangun di atas Laravel dan starter kit Livewire. Saat ini, aplikasi menyediakan fondasi autentikasi, dashboard, dan pengaturan akun; kamus isyarat, materi, kuis, serta pelacakan progres masih merupakan ruang lingkup produk yang direncanakan.
+Signify adalah aplikasi web pembelajaran Bahasa Isyarat Indonesia (BISINDO). Pengguna dapat mempelajari materi secara bertahap melalui modul, melihat kosakata pada kamus BISINDO, dan mengerjakan latihan serta kuis. Progres materi dan percobaan kuis disimpan agar aktivitas belajar dapat ditampilkan kembali pada dashboard.
 
-## Dokumentasi proyek
+Admin memiliki panel untuk mengelola modul, kosakata dan media kamus, serta paket kuis dan pertanyaannya. Autentikasi aplikasi menggunakan Laravel Fortify; Supabase digunakan untuk PostgreSQL dan penyimpanan media yang kompatibel dengan S3.
 
-- [Panduan coding](docs/CODING_GUIDELINES.md) — konvensi dan pemeriksaan untuk kontribusi ke repository.
-- [Skema Supabase](docs/supabase_schema.sql) — skema PostgreSQL, relasi, dan kebijakan Row Level Security (RLS) untuk Supabase.
+## Fitur
+
+- Autentikasi dan pengaturan akun pengguna.
+- Dashboard dengan ringkasan progres belajar, XP, streak, dan misi harian.
+- Modul pembelajaran yang terdiri atas materi dan kuis.
+- Kamus BISINDO dengan kategori, detail kosakata, serta media gambar atau video.
+- Latihan kuis dengan penyimpanan skor dan percobaan pengguna.
+- Panel admin untuk mengelola modul, kamus, media, dan kuis.
+- Pembatasan akses panel administrasi berdasarkan peran pengguna.
 
 ## Teknologi
 
-- PHP 8.3+ dan Laravel 13
-- Livewire 4 dan Flux UI
-- Blade, Tailwind CSS 4, dan JavaScript
-- Vite Plus untuk pengembangan dan bundling aset frontend
-- PostgreSQL melalui Supabase sebagai database aplikasi
+- PHP dan Laravel 13
+- Livewire 4, Blade, dan Flux UI
+- Tailwind CSS 4
+- Vite Plus untuk pengembangan dan build aset frontend
+- PostgreSQL melalui Supabase
+- Supabase Storage melalui antarmuka S3 untuk media
+- Pest dan PHPUnit untuk pengujian
 
-## Anggota tim
+## Persyaratan
+
+- PHP 8.4.1 atau lebih baru untuk memenuhi persyaratan dependensi yang saat ini terpasang.
+- Composer 2
+- Node.js 22 dan npm
+
+CI proyek menggunakan PHP 8.4 dan Node.js 22. `composer.json` mendeklarasikan PHP `^8.3`, tetapi versi dependensi yang terpasang saat ini meminta PHP minimal 8.4.1. Periksa kesesuaian runtime dan dependensi dengan `composer check-platform-reqs` sebelum menjalankan aplikasi atau tes.
+
+## Menjalankan Secara Lokal
+
+Dari direktori proyek, jalankan:
+
+```bash
+composer setup
+composer dev
+```
+
+`composer setup` memasang dependensi, menyalin `.env.example` menjadi `.env` bila belum ada, membuat `APP_KEY`, menjalankan migrasi, memasang dependensi frontend, dan membangun aset. Konfigurasi awal `.env.example` menggunakan SQLite agar aplikasi dapat disiapkan secara lokal tanpa kredensial Supabase.
+
+Setelah proses pengembangan berjalan, buka alamat lokal yang ditampilkan Artisan pada terminal. Jangan membagikan atau memasukkan file `.env`, kata sandi, token, maupun kredensial Supabase ke repository.
+
+## Database dan Media
+
+Untuk penggunaan lokal, SQLite dapat digunakan dengan konfigurasi bawaan. Untuk menghubungkan aplikasi ke PostgreSQL Supabase, atur variabel berikut pada `.env`:
+
+```dotenv
+DB_CONNECTION=pgsql
+DB_URL=
+DB_SSLMODE=require
+```
+
+Untuk mengaktifkan penyimpanan media melalui Supabase Storage S3, isi kredensial dan endpoint dari pengaturan S3 Supabase pada `.env`:
+
+```dotenv
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=
+AWS_BUCKET=bisindo-media
+AWS_ENDPOINT=
+```
+
+Fitur unggah media menggunakan disk bernama `s3`; pengaturan `FILESYSTEM_DISK` bawaan tidak perlu diubah untuk fitur tersebut. Simpan kredensial hanya di environment server. Jangan mengeksposnya ke browser atau commit ke repository. Batas unggah aplikasi secara default 50 MB, sehingga `upload_max_filesize` dan `post_max_size` pada PHP perlu disetel agar tidak lebih kecil dari batas aplikasi.
+
+Migrasi Laravel menyiapkan tabel aplikasi, termasuk tabel autentikasi dan progres. `docs/supabase_schema.sql` berisi skema PostgreSQL untuk fitur tambahan Supabase; file tersebut bukan pengganti migrasi Laravel. Autentikasi Signify menggunakan Laravel Fortify, bukan Supabase Auth, sehingga akses ke data pengguna harus tetap diperiksa oleh aplikasi Laravel.
+
+## Pengujian dan Pemeriksaan
+
+Tes menggunakan SQLite in-memory sesuai konfigurasi `phpunit.xml`, sehingga tidak memerlukan koneksi ke database Supabase.
+
+```bash
+php artisan test
+composer lint
+composer types:check
+npm run build
+```
+
+Untuk menjalankan pemeriksaan CI proyek sekaligus:
+
+```bash
+composer ci:check
+```
+
+## Deployment
+
+README ini tidak menetapkan penyedia hosting. Saat menyiapkan deployment, gunakan lingkungan yang dapat menjalankan aplikasi Laravel dan sediakan konfigurasi environment untuk `APP_KEY`, `APP_URL`, database, serta storage media. Pastikan juga session, cache, antrean, penyimpanan file, dan batas unggah sesuai dengan dukungan lingkungan hosting yang dipilih.
+
+Jalankan migrasi sebagai langkah deployment yang direncanakan, bukan sebagai efek samping dari request web. Jangan menjalankan `composer setup` terhadap database produksi karena perintah tersebut menjalankan migrasi. Jika menggunakan Supabase, koneksi database dan akses storage harus disimpan di sisi server.
+
+## Dokumentasi Proyek
+
+- [Panduan coding](docs/CODING_GUIDELINES.md) — konvensi kontribusi dan pemeriksaan kode.
+- [Skema Supabase](docs/supabase_schema.sql) — skema PostgreSQL untuk fitur tambahan Supabase.
+
+## Anggota Tim
 
 | Anggota | NIM | Peran | Tanggung Jawab |
 | --- | --- | --- | --- |
@@ -30,43 +112,3 @@ Signify adalah website yang dirancang untuk membantu pembelajaran Sistem Isyarat
 | Aryanti Puspita Sari | 245150400111068 | UI/UX Designer dan Frontend Developer | Merancang desain dan alur aplikasi serta membangun tampilan dan interaksi pengguna. |
 | Muhammad Darren Achilles Setiawan | 245150401111049 | Backend Developer | Membangun server, database, dan API. |
 | A. Muh. Abduh Dzaky | 245150407111039 | Backend Developer | Membangun server, database, dan API. |
-
-## Persiapan lokal
-
-Pastikan PHP 8.3+, Composer, Node.js, dan npm tersedia. Dari direktori proyek, jalankan:
-
-```bash
-composer setup
-composer dev
-```
-
-`composer setup` memasang dependensi PHP dan JavaScript, menyiapkan `.env`, membuat application key, menjalankan migrasi, dan membangun aset frontend. `composer dev` menjalankan lingkungan pengembangan Laravel.
-
-## Database
-
-Aplikasi menggunakan PostgreSQL melalui Supabase. Koneksi Laravel menggunakan driver `pgsql` dan dikonfigurasi melalui variabel environment, seperti `DB_CONNECTION` dan `DB_URL`. Jangan membagikan atau memasukkan file `.env` maupun kredensial Supabase ke commit.
-
-File `.env.example` menyediakan konfigurasi SQLite untuk penggunaan lokal tanpa kredensial database, dan pengujian juga diarahkan ke SQLite melalui `phpunit.xml`. Migration Laravel menjadi sumber skema untuk autentikasi Fortify, termasuk tabel `users`, passkeys, two-factor authentication, role, dan status aktif. `docs/supabase_schema.sql` hanya membuat tabel fitur tambahan dan policy Data API; jalankan migration Laravel terlebih dahulu pada database Supabase sebelum menjalankan SQL tersebut.
-
-## Deployment ke Vercel
-
-Konfigurasi saat ini menggunakan [`vercel-php@0.9.0`](https://github.com/vercel-community/php), runtime PHP komunitas untuk Vercel (PHP 8.5), bukan runtime PHP resmi Vercel. Vercel mendukung runtime kustom, tetapi deployment Laravel ini tetap perlu diverifikasi pada project Vercel sebenarnya. `vercel.json` menggunakan aset Vite yang sudah di-commit di `public/build`, karena Composer tidak tersedia pada perintah build global Vercel sedangkan stylesheet Flux berasal dari `vendor/`. Jika aset frontend berubah, jalankan `npm run build` secara lokal dan commit hasil `public/build` bersama perubahannya. Runtime PHP menangani dependency Composer untuk fungsi Laravel. Konfigurasi tersebut juga mengatur routing, region, serta direktori sementara yang diperlukan Laravel. Region `bom1` harus disesuaikan bila region database Supabase berada di lokasi lain; tempatkan fungsi sedekat mungkin dengan database.
-
-Atur secret di **Vercel Project Settings → Environment Variables**, bukan di repository:
-
-- `APP_KEY`: application key Laravel yang stabil untuk semua deployment environment terkait.
-- `APP_URL`: URL HTTPS deployment.
-- `DB_URL`: connection string [**Transaction pooler**](https://supabase.com/docs/guides/database/connecting-to-postgres) dari tombol **Connect** di Supabase. Gunakan host, username, dan password persis seperti yang diberikan Supabase; mode ini umumnya menggunakan port `6543`. Encode karakter khusus pada password sesuai format URL.
-
-`DB_CONNECTION=pgsql`, `DB_SSLMODE=require`, `APP_ENV=production`, dan `APP_DEBUG=false` sudah menjadi konfigurasi deployment. Filesystem Vercel hanya dapat ditulis sementara di `/tmp`; file hasil upload harus menggunakan storage persisten eksternal. Session cookie, cache array, dan queue sync yang dikonfigurasi saat ini juga tidak menyediakan state persisten atau worker antrean.
-
-**Jangan jalankan `composer setup` di production:** perintah itu menjalankan migrasi pada database aktif. Jalankan migration Laravel dan SQL fitur Supabase sebagai langkah deployment terpisah, bukan dari request web. Autentikasi aplikasi menggunakan Laravel/Fortify, bukan Supabase Auth; karena itu, policy Data API tidak memberi identitas Fortify kepada Postgres. Koneksi database Laravel harus tetap server-side, dan setiap aksi yang mengakses data milik pengguna harus diotorisasi di Laravel.
-
-## Pemeriksaan kode
-
-```bash
-npm run build
-composer lint
-composer types:check
-php artisan test
-```
